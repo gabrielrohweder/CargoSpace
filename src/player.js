@@ -10,6 +10,7 @@ class Player {
         this.score = 0;
         this.recalled = false;
         this.skipTurn = false;
+        this.movesLeft = 0;
     }
 }
 

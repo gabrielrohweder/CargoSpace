@@ -452,7 +452,9 @@ class Game {
     }
 
     rollDice() {
-        return Math.floor(Math.random() * 6) + 1;
+        const die1 = Math.floor(Math.random() * 6) + 1;
+        const die2 = Math.floor(Math.random() * 6) + 1;
+        return [die1, die2];
     }
 }
 

@@ -121,7 +121,21 @@ io.on('connection', (socket) => {
 
     socket.on('rollDice', () => {
         const result = game.rollDice();
+        const player = game.players.find(p => p.id === socket.id);
+        if (player) {
+            player.movesLeft = result[0] + result[1];
+        }
         io.emit('diceRolled', { playerId: socket.id, result: result });
+        io.emit('playersUpdate', game.players);
+    });
+
+    socket.on('moveShip', (data) => {
+        const player = game.players.find(p => p.id === socket.id);
+        if (player && player.movesLeft >= data.cost) {
+            player.ship.position = { q: data.q, r: data.r };
+            player.movesLeft = 0; // Reset moves to 0 after moving
+            io.emit('playersUpdate', game.players);
+        }
     });
 });
 

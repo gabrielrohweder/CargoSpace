@@ -38,7 +38,10 @@ class UIScene extends Phaser.Scene {
     }
 
     showDiceResult(data) {
-        const text = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, `Player rolled: ${data.result}`, {
+        const resultString = Array.isArray(data.result) ? data.result.join(' + ') : data.result;
+        const sum = Array.isArray(data.result) ? data.result.reduce((a, b) => a + b, 0) : data.result;
+        
+        const text = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, `Player rolled: ${resultString} = ${sum}`, {
             font: '48px Arial',
             fill: '#ffffff',
             stroke: '#000000',
@@ -218,13 +221,20 @@ class UIScene extends Phaser.Scene {
 
         // Roll Dice Button (Right side of bottom panel)
         const btnX = screenWidth - 100;
-        const btnY = centerY;
+        const btnY = centerY - 20;
         const btn = this.add.rectangle(btnX, btnY, 120, 50, 0x444444).setInteractive();
         btn.setStrokeStyle(2, 0xffffff);
         this.currentPlayerGroup.add(btn);
         
         const btnText = this.add.text(btnX, btnY, 'Roll Dice', { font: '20px Arial', fill: '#ffffff' }).setOrigin(0.5);
         this.currentPlayerGroup.add(btnText);
+
+        // Moves Text
+        const movesText = this.add.text(btnX, btnY + 40, `Moves: ${player.movesLeft || 0}`, { 
+            font: '18px Arial', 
+            fill: '#ffffff' 
+        }).setOrigin(0.5);
+        this.currentPlayerGroup.add(movesText);
 
         btn.on('pointerdown', () => {
             this.socket.emit('rollDice');
@@ -277,6 +287,8 @@ class GameScene extends Phaser.Scene {
         this.socket = io();
         this.boardGroup = this.add.group();
         this.players = []; // Initialize empty
+        this.tileData = new Map();
+        this.highlightedTiles = [];
 
         // Launch UI Scene
         this.scene.launch('UIScene', { socket: this.socket });
@@ -311,24 +323,6 @@ class GameScene extends Phaser.Scene {
             this.renderBoard(data);
         });
 
-        // Debug Regenerate Button (Keep for now, or remove?)
-        // Let's keep it but maybe move it or hide it if game hasn't started?
-        // For now, I'll comment it out to avoid confusion with Start Game
-        /*
-        const btn = document.createElement('button');
-        btn.innerText = 'Regenerate Board';
-        btn.style.position = 'absolute';
-        btn.style.top = '10px';
-        btn.style.right = '10px';
-        btn.style.padding = '10px';
-        btn.style.zIndex = '1000';
-        document.body.appendChild(btn);
-        
-        btn.onclick = () => {
-            this.socket.emit('regenerateBoard');
-        };
-        */
-
         this.socket.on('boardState', (data) => {
             this.renderBoard(data);
         });
@@ -354,6 +348,13 @@ class GameScene extends Phaser.Scene {
         this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
             const newZoom = this.cameras.main.zoom - (deltaY * 0.001);
             this.cameras.main.zoom = Phaser.Math.Clamp(newZoom, 0.1, 2);
+        });
+
+        // Clear highlights on background click
+        this.input.on('pointerdown', (pointer, gameObjects) => {
+            if (gameObjects.length === 0) {
+                this.clearHighlights();
+            }
         });
     }
 
@@ -425,21 +426,29 @@ class GameScene extends Phaser.Scene {
     }
 
     renderBoard(data) {
+        console.log(`[DEBUG] renderBoard called with ${data.tiles.length} tiles.`);
         this.boardGroup.clear(true, true);
-        const scale = data.gridScale || 100; 
+        this.tileData.clear();
+        this.teleportTiles = []; // Reset teleport tiles list
+        this.gridScale = data.gridScale || 100;
+        const scale = this.gridScale;
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
 
         data.tiles.forEach(tile => {
+            // Ensure coordinates are numbers
+            const q = parseInt(tile.position.q);
+            const r = parseInt(tile.position.r);
+            
             // Use the new coordinate system logic
-            const { x, y } = this.axialToPixel(tile.position.q, tile.position.r, scale);
+            const { x, y } = this.axialToPixel(q, r, scale);
             let texture = 'triangle';
             let tint = 0xffffff;
             let rotation = 0;
 
             // Determine orientation based on grid coordinates
             // (q + r) % 2 === 0 ? UP : DOWN
-            const isUp = (Math.abs(tile.position.q + tile.position.r)) % 2 === 0;
+            const isUp = (Math.abs(q + r)) % 2 === 0;
             rotation = isUp ? 0 : Math.PI;
 
             if (tile.type === 'hub') {
@@ -455,6 +464,8 @@ class GameScene extends Phaser.Scene {
             } else if (tile.type === 'teleportation') {
                 texture = 'triangle';
                 tint = 0x0000ff;
+                // Store teleport tile key for BFS
+                this.teleportTiles.push(`${q},${r}`);
             } else if (tile.type === 'black_hole') {
                 texture = 'triangle';
                 tint = 0x000000;
@@ -469,15 +480,17 @@ class GameScene extends Phaser.Scene {
                 let p2 = null;
                 if (tile.occupiedPositions && tile.occupiedPositions.length === 2) {
                     // Find the one that is NOT tile.position
-                    p2 = tile.occupiedPositions.find(p => p.q !== tile.position.q || p.r !== tile.position.r);
+                    p2 = tile.occupiedPositions.find(p => parseInt(p.q) !== q || parseInt(p.r) !== r);
                 }
 
                 if (p2) {
-                    const dq = p2.q - tile.position.q;
+                    const p2q = parseInt(p2.q);
+                    const p2r = parseInt(p2.r);
+                    const dq = p2q - q;
                     
                     // Calculate pixel positions
-                    const p1Pix = this.axialToPixel(tile.position.q, tile.position.r, scale);
-                    const p2Pix = this.axialToPixel(p2.q, p2.r, scale);
+                    const p1Pix = this.axialToPixel(q, r, scale);
+                    const p2Pix = this.axialToPixel(p2q, p2r, scale);
 
                     // Midpoint
                     const midX = (p1Pix.x + p2Pix.x) / 2;
@@ -496,7 +509,7 @@ class GameScene extends Phaser.Scene {
                         // P1(Down) -> P2(Up) ?
                         // Or P1(Up) -> P2(Down) ?
                         // Let's check P1 orientation.
-                        const isP1Up = (Math.abs(tile.position.q + tile.position.r)) % 2 === 0;
+                        const isP1Up = (Math.abs(q + r)) % 2 === 0;
                         
                         // If P1 is Up. P2 must be Down.
                         // If P2 is Right (dq=1). P1(Up) -> P2(Down). Slope \. Rotation 60.
@@ -519,8 +532,15 @@ class GameScene extends Phaser.Scene {
             }
 
             const sprite = this.add.sprite(centerX + x, centerY + y, texture);
+            sprite.setDepth(1);
             this.boardGroup.add(sprite);
             sprite.setTint(tint);
+            
+            // this.tileData.set(`${q},${r}`, {
+            //     type: tile.type,
+            //     sprite: sprite,
+            //     defaultTint: tint
+            // });
             
             const s = scale; // Side length matches scale in new grid
             
@@ -552,18 +572,160 @@ class GameScene extends Phaser.Scene {
             } else {
                 sprite.setDisplaySize(s, s);
             }
+
+            if (tile.occupiedPositions && tile.occupiedPositions.length > 0) {
+                tile.occupiedPositions.forEach(pos => {
+                    const pq = parseInt(pos.q);
+                    const pr = parseInt(pos.r);
+                    this.tileData.set(`${pq},${pr}`, {
+                        type: tile.type,
+                        sprite: sprite,
+                        defaultTint: tint
+                    });
+                });
+            } else {
+                this.tileData.set(`${q},${r}`, {
+                    type: tile.type,
+                    sprite: sprite,
+                    defaultTint: tint
+                });
+            }
         });
+        console.log(`[DEBUG] tileData populated. Size: ${this.tileData.size}`);
+    }
+
+    getNeighbors(q, r) {
+        const neighbors = [
+            { q: q - 1, r: r }, // Left
+            { q: q + 1, r: r }  // Right
+        ];
+        
+        if ((q + r) % 2 === 0) {
+            // Up triangle pointing up
+            neighbors.push({ q: q, r: r + 1 }); // Bottom
+        } else {
+            // Down triangle pointing down
+            neighbors.push({ q: q, r: r - 1 }); // Top
+        }
+        
+        return neighbors;
+    }
+
+    highlightReachableTiles(startQ, startR, range) {
+        console.log(`Highlighting tiles from ${startQ},${startR} range ${range}`);
+        this.clearHighlights();
+        
+        if (range <= 0) return;
+
+        // Identify occupied tiles
+        const occupiedTiles = new Set();
+        this.players.forEach(p => {
+            if (p.id !== this.socket.id && p.ship) {
+                occupiedTiles.add(`${p.ship.position.q},${p.ship.position.r}`);
+            }
+        });
+
+        const q = parseInt(startQ);
+        const r = parseInt(startR);
+
+        const queue = [{ q: q, r: r, dist: 0 }];
+        const visited = new Set();
+        visited.add(`${q},${r}`);
+
+        while (queue.length > 0) {
+            const current = queue.shift();
+            
+            // Teleportation Logic
+            const currentKey = `${current.q},${current.r}`;
+            const currentTileData = this.tileData.get(currentKey);
+            
+            if (currentTileData && currentTileData.type === 'teleportation') {
+                for (const teleKey of this.teleportTiles) {
+                    if (teleKey !== currentKey && !visited.has(teleKey)) {
+                        const [tq, tr] = teleKey.split(',').map(Number);
+                        visited.add(teleKey);
+                        // Add to queue with SAME distance (instant travel)
+                        queue.push({ q: tq, r: tr, dist: current.dist });
+                        
+                        // Highlight the destination teleport tile
+                        const teleTile = this.tileData.get(teleKey);
+                        if (teleTile) {
+                            teleTile.sprite.setTint(0xffff00);
+                            teleTile.sprite.setInteractive();
+                            teleTile.sprite.off('pointerdown');
+                            teleTile.sprite.on('pointerdown', () => {
+                                console.log(`Teleporting to ${tq},${tr} cost ${current.dist}`);
+                                this.socket.emit('moveShip', { q: tq, r: tr, cost: current.dist });
+                                this.clearHighlights();
+                            });
+                            this.highlightedTiles.push(teleTile);
+                        }
+                    }
+                }
+            }
+
+            if (current.dist < range) {
+                const neighbors = this.getNeighbors(current.q, current.r);
+                console.log(`[DEBUG] Neighbors of ${current.q},${current.r}:`, JSON.stringify(neighbors));
+                
+                for (const neighbor of neighbors) {
+                    const key = `${neighbor.q},${neighbor.r}`;
+                    if (!visited.has(key)) {
+                        const tile = this.tileData.get(key);
+                        console.log(`[DEBUG] Checking ${key}. Tile found: ${!!tile}`);
+                        // Check for obstacles: Asteroids, Black Holes, AND Occupied Tiles
+                        const isOccupied = occupiedTiles.has(key);
+                        
+                        if (tile && tile.type !== 'asteroid_belt' && tile.type !== 'black_hole' && !isOccupied) {
+                            console.log(`Highlighting tile ${key}`);
+                            visited.add(key);
+                            const dist = current.dist + 1;
+                            queue.push({ q: neighbor.q, r: neighbor.r, dist: dist });
+                            
+                            // Highlight
+                            tile.sprite.setTint(0xffff00);
+                            tile.sprite.setInteractive();
+                            // Remove existing listeners to avoid duplicates if logic changes
+                            tile.sprite.off('pointerdown'); 
+                            tile.sprite.on('pointerdown', () => {
+                                console.log(`Moving to ${neighbor.q},${neighbor.r} cost ${dist}`);
+                                this.socket.emit('moveShip', { q: neighbor.q, r: neighbor.r, cost: dist });
+                                this.clearHighlights();
+                            });
+                            this.highlightedTiles.push(tile);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    clearHighlights() {
+        this.highlightedTiles.forEach(tile => {
+            tile.sprite.setTint(tile.defaultTint);
+            tile.sprite.disableInteractive();
+            tile.sprite.off('pointerdown');
+        });
+        this.highlightedTiles = [];
     }
 
     renderShips(players) {
+        console.log('Rendering ships. Players:', players.length);
         if (!this.shipsGroup) {
             this.shipsGroup = this.add.group();
         }
         this.shipsGroup.clear(true, true);
 
-        const scale = 100; // Should match grid scale
+        const scale = this.gridScale || 100; // Should match grid scale
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
+
+        this.myPlayer = players.find(p => p.id === this.socket.id);
+        if (this.myPlayer) {
+            console.log('My Player found. Moves Left:', this.myPlayer.movesLeft);
+        } else {
+            console.log('My Player NOT found. Socket ID:', this.socket.id);
+        }
 
         players.forEach(player => {
             if (player.ship) {
@@ -578,6 +740,7 @@ class GameScene extends Phaser.Scene {
                 
                 const container = this.add.container(centerX + x, centerY + y, [shipGraphics]);
                 this.shipsGroup.add(container);
+                container.setDepth(10);
                 
                 // Add player name above ship
                 const nameText = this.add.text(0, -30, player.name, {
@@ -587,6 +750,20 @@ class GameScene extends Phaser.Scene {
                     strokeThickness: 3
                 }).setOrigin(0.5);
                 container.add(nameText);
+
+                // Make my ship interactive
+                if (this.myPlayer && player.id === this.myPlayer.id) {
+                    console.log('Making my ship interactive');
+                    const hitArea = new Phaser.Geom.Circle(0, 0, 20);
+                    container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
+                    
+                    container.on('pointerdown', () => {
+                        console.log('Pointer down on ship. Moves:', this.myPlayer.movesLeft);
+                        if (this.myPlayer.movesLeft > 0) {
+                            this.highlightReachableTiles(player.ship.position.q, player.ship.position.r, this.myPlayer.movesLeft);
+                        }
+                    });
+                }
             }
         });
     }
