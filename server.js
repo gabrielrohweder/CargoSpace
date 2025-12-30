@@ -130,11 +130,20 @@ io.on('connection', (socket) => {
     });
 
     socket.on('moveShip', (data) => {
+        console.log('moveShip received:', data);
         const player = game.players.find(p => p.id === socket.id);
-        if (player && player.movesLeft >= data.cost) {
-            player.ship.position = { q: data.q, r: data.r, s: data.s };
-            player.movesLeft = 0; // Reset moves to 0 after moving
-            io.emit('playersUpdate', game.players);
+        if (player) {
+            console.log(`Player ${player.name} movesLeft: ${player.movesLeft}, cost: ${data.cost}`);
+            if (player.movesLeft >= data.cost) {
+                player.ship.position = { q: data.q, r: data.r, s: data.s };
+                player.movesLeft -= data.cost; // Subtract the cost instead of resetting to 0
+                console.log(`Ship moved to ${data.q},${data.r},${data.s}. Moves remaining: ${player.movesLeft}`);
+                io.emit('playersUpdate', game.players);
+            } else {
+                console.log('Not enough moves left');
+            }
+        } else {
+            console.log('Player not found');
         }
     });
 });

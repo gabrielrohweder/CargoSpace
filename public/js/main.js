@@ -675,19 +675,25 @@ class GameScene extends Phaser.Scene {
                     sprite.destroy();
                 }
             } else {
-                // Non-movement tiles: keep the single main sprite and register a canonical center sub-tile key
+                // Non-movement tiles: keep the single main sprite and register all 4 sub-positions
+                // This ensures ships can be placed on any sub-position and neighbors work correctly
                 positions.forEach(pos => {
                     const pq = parseInt(pos.q);
                     const pr = parseInt(pos.r);
-                    const canonical = `${pq},${pr},3`;
-                    this.tileData.set(canonical, {
-                        type: tile.type,
-                        sprite: sprite,
-                        defaultTint: tint,
-                        q: pq, r: pr, s: 3
-                    });
+                    
+                    // Register all 4 sub-positions (0, 1, 2, 3) for this tile
+                    for (let si = 0; si < 4; si++) {
+                        const key = `${pq},${pr},${si}`;
+                        this.tileData.set(key, {
+                            type: tile.type,
+                            sprite: sprite,
+                            defaultTint: tint,
+                            q: pq, r: pr, s: si
+                        });
+                    }
 
                     if (tile.type === 'teleportation') {
+                        const canonical = `${pq},${pr},3`;
                         if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
                     }
                 });
@@ -777,27 +783,52 @@ class GameScene extends Phaser.Scene {
                         // Add to queue with SAME distance (instant travel)
                         queue.push({ q: tq, r: tr, s: ts, dist: current.dist });
                         
-                        // Highlight the destination teleport tile
-                        const teleTile = this.tileData.get(teleKey);
-                        if (teleTile) {
-                            const spr = teleTile.sprite;
-                            if (spr.setTint) spr.setTint(0xffff00); else if (spr.container) spr.container.setTint && spr.container.setTint(0xffff00);
-                            if (spr.setInteractive) spr.setInteractive(); else if (spr.hit) try { spr.hit.setInteractive(); } catch(e){}
-                            if (spr.off) spr.off('pointerdown'); else if (spr.hit) try { spr.hit.off('pointerdown'); } catch(e){}
-                            if (spr.on) {
-                                spr.on('pointerdown', () => {
-                                    console.log(`Teleporting to ${tq},${tr},${ts} cost ${current.dist}`);
-                                    this.socket.emit('moveShip', { q: tq, r: tr, s: ts, cost: current.dist });
-                                    this.clearHighlights();
-                                });
-                            } else if (spr.hit) {
-                                spr.hit.on('pointerdown', () => {
-                                    console.log(`Teleporting to ${tq},${tr},${ts} cost ${current.dist}`);
-                                    this.socket.emit('moveShip', { q: tq, r: tr, s: ts, cost: current.dist });
-                                    this.clearHighlights();
-                                });
+                        // Only highlight if the teleport costs at least 1 move
+                        if (current.dist > 0) {
+                            // Highlight the destination teleport tile
+                            const teleTile = this.tileData.get(teleKey);
+                            if (teleTile) {
+                                const spr = teleTile.sprite;
+                                
+                                // Check if already highlighted
+                                const alreadyHighlighted = this.highlightedTiles.find(ht => ht.sprite === spr);
+                                
+                                if (!alreadyHighlighted) {
+                                    // Highlight
+                                    if (spr.setTint) {
+                                        spr.setTint(0xffff00);
+                                    }
+                                    
+                                    // Make interactive
+                                    if (spr.setInteractive) {
+                                        spr.setInteractive();
+                                    }
+                                    
+                                    this.highlightedTiles.push(teleTile);
+                                }
+                                
+                                // Add click handler
+                                const handler = (() => {
+                                    const qtele = tq;
+                                    const rtele = tr;
+                                    const stele = ts;
+                                    const dcost = current.dist;
+                                    return () => {
+                                        console.log(`Teleporting to ${qtele},${rtele},${stele} cost ${dcost}`);
+                                        this.socket.emit('moveShip', { q: qtele, r: rtele, s: stele, cost: dcost });
+                                        this.clearHighlights();
+                                    };
+                                })();
+                                
+                                if (!teleTile.clickHandlers) {
+                                    teleTile.clickHandlers = [];
+                                }
+                                teleTile.clickHandlers.push(handler);
+                                
+                                if (spr.on) {
+                                    spr.on('pointerdown', handler);
+                                }
                             }
-                            this.highlightedTiles.push(teleTile);
                         }
                     }
                 }
@@ -812,60 +843,103 @@ class GameScene extends Phaser.Scene {
                     if (!visited.has(key)) {
                         const tile = this.tileData.get(key);
                         // console.log(`[DEBUG] Checking ${key}. Tile found: ${!!tile}`);
-                        // Check for obstacles: Asteroids, Black Holes, AND Occupied Tiles
+                        
+                        if (!tile) {
+                            visited.add(key);
+                            continue;
+                        }
+                        
+                        // Check for obstacles: Asteroids, Black Holes
+                        const isBlocked = tile.type === 'asteroid_belt' || tile.type === 'black_hole';
+                        
+                        // Check if occupied by another player
                         const isOccupied = occupiedTiles.has(key);
                         
-                        if (tile && tile.type !== 'asteroid_belt' && tile.type !== 'black_hole' && !isOccupied) {
-                            // console.log(`Highlighting tile ${key}`);
-                            
-                            let stepCost = 1;
-                            // Check if moving internally within a non-movement tile
-                            // If we are on the same q,r and the tile is NOT a movement tile, movement is free (it counts as one tile)
-                            if (current.q === neighbor.q && current.r === neighbor.r) {
-                                const currentTile = this.tileData.get(currentKey);
-                                if (currentTile && currentTile.type !== 'movement') {
-                                    stepCost = 0;
+                        // Mark as visited regardless
+                        visited.add(key);
+                        
+                        // If blocked or occupied, don't continue pathfinding through this tile
+                        if (isBlocked || isOccupied) {
+                            continue;
+                        }
+                        
+                        // Calculate step cost
+                        let stepCost = 1;
+                        const currentTile = this.tileData.get(currentKey);
+                        
+                        // Check if moving internally within the same tile (same q,r but different s)
+                        if (current.q === neighbor.q && current.r === neighbor.r) {
+                            // Internal movement within a tile is free
+                            if (currentTile && currentTile.type !== 'movement') {
+                                stepCost = 0;
+                            }
+                        } else {
+                            // Moving to a different tile (different q,r)
+                            // For hub and planet tiles, check if we're entering from another part of the same multi-tile
+                            if (tile.type === 'hub' || tile.type === 'planet') {
+                                // Check if current position is also part of the same hub/planet
+                                if (currentTile && currentTile.type === tile.type) {
+                                    // Both positions might be part of the same multi-position tile
+                                    // For hub: all 6 positions share the same sprite
+                                    // For planet: 2 positions share the same sprite
+                                    if (currentTile.sprite === tile.sprite) {
+                                        // Moving between different positions of the same multi-tile (e.g., within hub)
+                                        stepCost = 0;
+                                    }
                                 }
                             }
+                        }
 
-                            const dist = current.dist + stepCost;
-                            
-                            // If we've already visited this node with a lower or equal distance, skip
-                            // But wait, if stepCost is 0, we might reach it with same distance.
-                            // The visited check is at the top of the loop: if (!visited.has(key))
-                            // This prevents re-visiting.
-                            // But BFS guarantees shortest path for unweighted graphs.
-                            // With 0 weights, it's slightly different (0-1 BFS), but standard BFS works if we process 0-cost edges immediately?
-                            // Or just treat it as normal. Since stepCost is 0 or 1, dist is monotonic.
-                            
-                            visited.add(key);
-                            queue.push({ q: neighbor.q, r: neighbor.r, s: neighbor.s, dist: dist });
-                            
-                            // Highlight
-                            // Only highlight if dist > 0 (don't highlight current tile unless we moved back to it?)
-                            // Actually, if stepCost is 0, we are "moving" within the tile.
-                            // Should we highlight the sub-tiles?
-                            // If the user sees the whole tile as one, maybe we should highlight all sub-tiles?
-                            // For now, let's just highlight the target sub-tile.
-                            
+                        const dist = current.dist + stepCost;
+                        
+                        // Add to queue for continued pathfinding
+                        queue.push({ q: neighbor.q, r: neighbor.r, s: neighbor.s, dist: dist });
+                        
+                        // Only highlight tiles that cost at least 1 move (don't highlight internal moves or starting position)
+                        if (dist > 0 && stepCost > 0) {
                             const spr = tile.sprite;
-                            if (spr.setTint) spr.setTint(0xffff00); else if (spr.container) spr.container.setTint && spr.container.setTint(0xffff00);
-                            if (spr.setInteractive) spr.setInteractive(); else if (spr.hit) try { spr.hit.setInteractive(); } catch(e){}
-                            if (spr.off) spr.off('pointerdown'); else if (spr.hit) try { spr.hit.off('pointerdown'); } catch(e){}
-                            if (spr.on) {
-                                spr.on('pointerdown', () => {
-                                    console.log(`Moving to ${neighbor.q},${neighbor.r},${neighbor.s} cost ${dist}`);
-                                    this.socket.emit('moveShip', { q: neighbor.q, r: neighbor.r, s: neighbor.s, cost: dist });
-                                    this.clearHighlights();
-                                });
-                            } else if (spr.hit) {
-                                spr.hit.on('pointerdown', () => {
-                                    console.log(`Moving to ${neighbor.q},${neighbor.r},${neighbor.s} cost ${dist}`);
-                                    this.socket.emit('moveShip', { q: neighbor.q, r: neighbor.r, s: neighbor.s, cost: dist });
-                                    this.clearHighlights();
-                                });
+                            
+                            // Check if this sprite was already highlighted (for non-movement tiles with shared sprites)
+                            const alreadyHighlighted = this.highlightedTiles.find(ht => ht.sprite === spr);
+                            
+                            if (!alreadyHighlighted) {
+                                // Highlight the tile (wrapper has setTint method for movement tiles)
+                                if (spr.setTint) {
+                                    spr.setTint(0xffff00);
+                                }
+                                
+                                // Make interactive (wrapper has setInteractive method)
+                                if (spr.setInteractive) {
+                                    spr.setInteractive();
+                                }
+                                
+                                this.highlightedTiles.push(tile);
                             }
-                            this.highlightedTiles.push(tile);
+                            
+                            // Always add click handler for this specific position (even if sprite was already highlighted)
+                            // Store the handler so we can remove it later
+                            const handler = (() => {
+                                const nq = neighbor.q;
+                                const nr = neighbor.r;
+                                const ns = neighbor.s;
+                                const ndist = dist;
+                                return () => {
+                                    console.log(`Moving to ${nq},${nr},${ns} cost ${ndist}`);
+                                    this.socket.emit('moveShip', { q: nq, r: nr, s: ns, cost: ndist });
+                                    this.clearHighlights();
+                                };
+                            })();
+                            
+                            // Store the handler for cleanup
+                            if (!tile.clickHandlers) {
+                                tile.clickHandlers = [];
+                            }
+                            tile.clickHandlers.push(handler);
+                            
+                            // Add the handler
+                            if (spr.on) {
+                                spr.on('pointerdown', handler);
+                            }
                         }
                     }
                 }
@@ -876,9 +950,24 @@ class GameScene extends Phaser.Scene {
     clearHighlights() {
         this.highlightedTiles.forEach(tile => {
             const spr = tile.sprite;
-            if (spr.setTint) spr.setTint(tile.defaultTint); else if (spr.triangles) spr.setTint(tile.defaultTint);
-            if (spr.disableInteractive) spr.disableInteractive(); else if (spr.hit) try { spr.hit.disableInteractive(); } catch(e){}
-            if (spr.off) spr.off('pointerdown'); else if (spr.hit) try { spr.hit.off('pointerdown'); } catch(e){}
+            
+            // Reset tint to default
+            if (spr.setTint) {
+                spr.setTint(tile.defaultTint);
+            }
+            
+            // Remove all click handlers for this tile
+            if (tile.clickHandlers && spr.off) {
+                tile.clickHandlers.forEach(handler => {
+                    spr.off('pointerdown', handler);
+                });
+                tile.clickHandlers = [];
+            }
+            
+            // Disable interactivity
+            if (spr.disableInteractive) {
+                spr.disableInteractive();
+            }
         });
         this.highlightedTiles = [];
     }
