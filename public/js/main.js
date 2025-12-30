@@ -266,6 +266,16 @@ class GameScene extends Phaser.Scene {
         this.load.image('rhombus', 'assets/images/rhombus.png');
         this.load.image('hexagon', 'assets/images/hexagon.png');
         this.load.image('star', 'assets/images/star.png');
+        // Load planet textures
+        this.load.image('planet0', 'assets/images/planet0.png');
+        this.load.image('planet1', 'assets/images/planet1.png');
+        this.load.image('planet2', 'assets/images/planet2.png');
+        this.load.image('planet3', 'assets/images/planet3.png');
+        this.load.image('planet4', 'assets/images/planet4.png');
+        this.load.image('planet5', 'assets/images/planet5.png');
+        // Load the animated GIF as a spritesheet
+        // Note: Phaser doesn't natively support animated GIFs, we'll need to handle this differently
+        this.load.image('teleporter', 'assets/images/teleporter.gif');
     }
 
     create() {
@@ -282,6 +292,14 @@ class GameScene extends Phaser.Scene {
         this.starfield3 = this.add.tileSprite(0, 0, width, height, 'stars3').setOrigin(0, 0).setScrollFactor(0).setDepth(-1);
         
         this.scale.on('resize', this.resize, this);
+
+        // Create debug text for tile info
+        this.debugText = this.add.text(10, 10, '', {
+            font: '14px Arial',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setScrollFactor(0).setDepth(1000);
 
         // Connect to Socket.io server
         this.socket = io();
@@ -482,13 +500,14 @@ class GameScene extends Phaser.Scene {
                 tint = 0x555555;
             } else if (tile.type === 'teleportation') {
                 texture = 'triangle';
-                tint = 0x0000ff;
+                tint = 0x00ffff; // Cyan color for teleporters
             } else if (tile.type === 'black_hole') {
                 texture = 'triangle';
                 tint = 0x000000;
             } else if (tile.type === 'planet') {
-                texture = 'rhombus';
-                tint = 0xff00ff;
+                // Use unique texture for each planet
+                texture = `planet${tile.planetId % 6}`;
+                tint = 0xffffff; // No tint needed, texture has color
             }
 
             const positions = (tile.occupiedPositions && tile.occupiedPositions.length > 0)
@@ -569,6 +588,7 @@ class GameScene extends Phaser.Scene {
             // We can render movement tiles as subdivided triangles; other tiles keep the main sprite.
 
             // If this is a movement tile, subdivide each triangular position into 4 sub-triangles.
+            // Teleportation tiles are NOT subdivided (they count as one tile like hub/planet)
             if (tile.type === 'movement') {
                 // For movement tiles create one container per triangular position containing four small triangles
                 positions.forEach(pos => {
@@ -588,10 +608,11 @@ class GameScene extends Phaser.Scene {
                     const containerX = Math.round(centerX + px + offsetX);
                     const containerY = Math.round(centerY + py + offsetY);
                     const container = this.add.container(containerX, containerY);
-                    container.setDepth(1);
+                    container.setDepth(2); // Higher than planet tiles so sub-triangles receive clicks
 
                     // Create 4 triangle children placed relative to container
                     const triangles = [];
+                    const subHitAreas = []; // Store hit areas for each sub-triangle
                     for (let si = 0; si < 4; si++) {
                         let subX = 0, subY = 0, subRotation = 0;
                         if (pIsUp) {
@@ -610,16 +631,13 @@ class GameScene extends Phaser.Scene {
                         tSprite.setDisplaySize(subScale, subScale * Math.sqrt(3) / 2);
                         tSprite.setOrigin(0.5, 2/3);
                         tSprite.setRotation(subRotation);
+                        tSprite.setInteractive(); // Make each sub-triangle interactive
                         container.add(tSprite);
                         triangles.push(tSprite);
+                        
+                        // Store reference to this sub-triangle with its index
+                        subHitAreas.push({ sprite: tSprite, subIndex: si });
                     }
-
-                    // Create an invisible hit sprite to handle interactivity on the whole tile
-                    const hit = this.add.sprite(0, 0, 'triangle');
-                    hit.setDisplaySize(scale, scale * Math.sqrt(3) / 2);
-                    hit.setOrigin(0.5, 2/3);
-                    hit.setVisible(false);
-                    container.add(hit);
 
                     // Add container to board group so it's managed similarly
                     this.boardGroup.add(container);
@@ -631,13 +649,19 @@ class GameScene extends Phaser.Scene {
                     const wrapper = {
                         container: container,
                         triangles: triangles,
-                        hit: hit,
+                        subHitAreas: subHitAreas,
                         setTint: (color) => { triangles.forEach(t => t.setTint(color)); },
-                        setInteractive: () => { try { hit.setInteractive(); } catch(e){} },
-                        disableInteractive: () => { try { hit.disableInteractive(); } catch(e){} },
-                        on: (ev, cb) => { hit.on(ev, cb); },
-                        off: (ev) => { hit.off(ev); },
-                        destroy: () => { try { hit.destroy(); } catch(e){}; triangles.forEach(t=>{try{t.destroy();}catch(e){}}); try { container.destroy(); } catch(e){} }
+                        setInteractive: () => { /* sub-triangles are already interactive */ },
+                        disableInteractive: () => { /* managed per sub-triangle */ },
+                        on: (ev, cb) => { 
+                            // Add event to all sub-triangles
+                            triangles.forEach(t => t.on(ev, cb));
+                        },
+                        off: (ev) => { 
+                            // Remove event from all sub-triangles
+                            triangles.forEach(t => t.off(ev));
+                        },
+                        destroy: () => { triangles.forEach(t=>{try{t.destroy();}catch(e){}}); try { container.destroy(); } catch(e){} }
                     };
 
                     // Default tint
@@ -651,6 +675,24 @@ class GameScene extends Phaser.Scene {
 
                     // Apply initial tint to visible triangles
                     wrapper.setTint(tint);
+
+                    // Add debug hover/click handlers to each sub-triangle
+                    subHitAreas.forEach(hit => {
+                        hit.sprite.on('pointermove', () => {
+                            const hasHandler = hit.sprite.clickHandler ? 'YES' : 'NO';
+                            this.debugText.setText(`Hover: Type=${tile.type}, Q=${pq}, R=${pr}, S=${hit.subIndex}, Handler=${hasHandler}`);
+                        });
+                        hit.sprite.on('pointerout', () => {
+                            this.debugText.setText('');
+                        });
+                        
+                        // Debug raw clicks
+                        hit.sprite.on('pointerdown', () => {
+                            if (!hit.sprite.clickHandler) {
+                                console.warn(`[CLICK] No handler on sub-triangle ${pq},${pr},${hit.subIndex}`);
+                            }
+                        });
+                    });
 
                     // Register all four sub-keys to point to the same wrapper so movement logic still uses s
                     for (let si = 0; si < 4; si++) {
@@ -689,6 +731,19 @@ class GameScene extends Phaser.Scene {
                             sprite: sprite,
                             defaultTint: tint,
                             q: pq, r: pr, s: si
+                        });
+                    }
+
+                    // Add debug hover/click handlers to the sprite
+                    if (sprite.setInteractive) {
+                        sprite.setInteractive();
+                        
+                        sprite.on('pointermove', () => {
+                            this.debugText.setText(`Hover: Type=${tile.type}, Q=${pq}, R=${pr}, PlanetId=${tile.planetId || 'N/A'}`);
+                        });
+                        
+                        sprite.on('pointerout', () => {
+                            this.debugText.setText('');
                         });
                     }
 
@@ -746,6 +801,7 @@ class GameScene extends Phaser.Scene {
 
     highlightReachableTiles(startQ, startR, startS, range) {
         console.log(`Highlighting tiles from ${startQ},${startR},${startS} range ${range}`);
+        console.log('Teleport tiles:', this.teleportTiles);
         this.clearHighlights();
         
         if (range <= 0) return;
@@ -783,8 +839,9 @@ class GameScene extends Phaser.Scene {
                         // Add to queue with SAME distance (instant travel)
                         queue.push({ q: tq, r: tr, s: ts, dist: current.dist });
                         
-                        // Only highlight if the teleport costs at least 1 move
-                        if (current.dist > 0) {
+                        // Only highlight if the teleport destination itself costs at least 1 move
+                        // (don't highlight if we're starting on the teleporter)
+                        if (current.dist >= 1) {
                             // Highlight the destination teleport tile
                             const teleTile = this.tileData.get(teleKey);
                             if (teleTile) {
@@ -805,28 +862,29 @@ class GameScene extends Phaser.Scene {
                                     }
                                     
                                     this.highlightedTiles.push(teleTile);
-                                }
-                                
-                                // Add click handler
-                                const handler = (() => {
-                                    const qtele = tq;
-                                    const rtele = tr;
-                                    const stele = ts;
-                                    const dcost = current.dist;
-                                    return () => {
-                                        console.log(`Teleporting to ${qtele},${rtele},${stele} cost ${dcost}`);
-                                        this.socket.emit('moveShip', { q: qtele, r: rtele, s: stele, cost: dcost });
-                                        this.clearHighlights();
-                                    };
-                                })();
-                                
-                                if (!teleTile.clickHandlers) {
-                                    teleTile.clickHandlers = [];
-                                }
-                                teleTile.clickHandlers.push(handler);
-                                
-                                if (spr.on) {
-                                    spr.on('pointerdown', handler);
+                                    
+                                    // Add ONE click handler for the teleporter
+                                    const handler = (() => {
+                                        const qtele = tq;
+                                        const rtele = tr;
+                                        const stele = ts;
+                                        const dcost = current.dist;
+                                        return () => {
+                                            console.log(`CLICKED TELEPORT: To Q=${qtele}, R=${rtele}, S=${stele}, Cost=${dcost}`);
+                                            this.debugText.setText(`CLICKED TELEPORT: Q=${qtele}, R=${rtele}, S=${stele}, Cost=${dcost}`);
+                                            this.socket.emit('moveShip', { q: qtele, r: rtele, s: stele, cost: dcost });
+                                            this.clearHighlights();
+                                        };
+                                    })();
+                                    
+                                    if (!teleTile.clickHandlers) {
+                                        teleTile.clickHandlers = [];
+                                    }
+                                    teleTile.clickHandlers.push(handler);
+                                    
+                                    if (spr.on) {
+                                        spr.on('pointerdown', handler);
+                                    }
                                 }
                             }
                         }
@@ -855,7 +913,7 @@ class GameScene extends Phaser.Scene {
                         // Check if occupied by another player
                         const isOccupied = occupiedTiles.has(key);
                         
-                        // Mark as visited regardless
+                        // Mark as visited
                         visited.add(key);
                         
                         // If blocked or occupied, don't continue pathfinding through this tile
@@ -875,13 +933,14 @@ class GameScene extends Phaser.Scene {
                             }
                         } else {
                             // Moving to a different tile (different q,r)
-                            // For hub and planet tiles, check if we're entering from another part of the same multi-tile
-                            if (tile.type === 'hub' || tile.type === 'planet') {
-                                // Check if current position is also part of the same hub/planet
+                            // For hub, planet, and teleportation tiles, check if we're entering from another part of the same multi-tile
+                            if (tile.type === 'hub' || tile.type === 'planet' || tile.type === 'teleportation') {
+                                // Check if current position is also part of the same tile
                                 if (currentTile && currentTile.type === tile.type) {
                                     // Both positions might be part of the same multi-position tile
                                     // For hub: all 6 positions share the same sprite
                                     // For planet: 2 positions share the same sprite
+                                    // For teleportation: single position but registered with multiple sub-keys
                                     if (currentTile.sprite === tile.sprite) {
                                         // Moving between different positions of the same multi-tile (e.g., within hub)
                                         stepCost = 0;
@@ -916,29 +975,112 @@ class GameScene extends Phaser.Scene {
                                 this.highlightedTiles.push(tile);
                             }
                             
-                            // Always add click handler for this specific position (even if sprite was already highlighted)
-                            // Store the handler so we can remove it later
-                            const handler = (() => {
-                                const nq = neighbor.q;
-                                const nr = neighbor.r;
-                                const ns = neighbor.s;
-                                const ndist = dist;
-                                return () => {
-                                    console.log(`Moving to ${nq},${nr},${ns} cost ${ndist}`);
-                                    this.socket.emit('moveShip', { q: nq, r: nr, s: ns, cost: ndist });
-                                    this.clearHighlights();
-                                };
-                            })();
-                            
-                            // Store the handler for cleanup
-                            if (!tile.clickHandlers) {
-                                tile.clickHandlers = [];
-                            }
-                            tile.clickHandlers.push(handler);
-                            
-                            // Add the handler
-                            if (spr.on) {
-                                spr.on('pointerdown', handler);
+                            // For movement tiles with sub-triangles, attach handler directly to the specific sub-triangle
+                            // For other tiles, attach to the main sprite
+                            if (tile.type === 'movement' && spr.subHitAreas && spr.subHitAreas.length > 0) {
+                                // Find the specific sub-triangle for this neighbor.s
+                                const subHit = spr.subHitAreas.find(sh => sh.subIndex === neighbor.s);
+                                if (subHit) {
+                                    const subSprite = subHit.sprite;
+                                    
+                                    // Highlight this specific sub-triangle
+                                    subSprite.setTint(0xffff00);
+                                    
+                                    // Always remove old handler before adding new one
+                                    if (subSprite.clickHandler) {
+                                        subSprite.off('pointerdown', subSprite.clickHandler);
+                                        subSprite.clickHandler = null;
+                                    }
+                                    
+                                    // Store move data
+                                    subSprite.moveData = {
+                                        q: neighbor.q,
+                                        r: neighbor.r,
+                                        s: neighbor.s,
+                                        dist: dist
+                                    };
+                                    
+                                    // Create and attach handler for this specific sub-triangle
+                                    const handler = (() => {
+                                        const moveQ = neighbor.q;
+                                        const moveR = neighbor.r;
+                                        const moveS = neighbor.s;
+                                        const moveDist = dist;
+                                        return () => {
+                                            console.log(`CLICKED SUB-TRIANGLE S=${moveS}: Moving to Q=${moveQ}, R=${moveR}, S=${moveS}, Cost=${moveDist}`);
+                                            this.debugText.setText(`CLICKED: Q=${moveQ}, R=${moveR}, S=${moveS}, Cost=${moveDist}`);
+                                            this.socket.emit('moveShip', { q: moveQ, r: moveR, s: moveS, cost: moveDist });
+                                            this.clearHighlights();
+                                        };
+                                    })();
+                                    
+                                    subSprite.on('pointerdown', handler);
+                                    subSprite.clickHandler = handler; // Store for cleanup
+                                    
+                                    // Add to highlighted tiles if not already there
+                                    if (!alreadyHighlighted) {
+                                        this.highlightedTiles.push(tile);
+                                    }
+                                    
+                                    console.log(`[HIGHLIGHT] Added handler to sub-triangle ${neighbor.q},${neighbor.r},${neighbor.s} at dist ${dist}`);
+                                } else {
+                                    console.warn(`[HIGHLIGHT] Could not find subHit for s=${neighbor.s} at ${neighbor.q},${neighbor.r}. Available indices:`, spr.subHitAreas.map(sh => sh.subIndex));
+                                }
+                            } else {
+                                // For non-movement tiles (hub, planet, etc.)
+                                // Only process if we haven't already highlighted this sprite
+                                if (!alreadyHighlighted) {
+                                    // Add this move option
+                                    if (!tile.moveOptions) {
+                                        tile.moveOptions = [];
+                                    }
+                                    tile.moveOptions.push({
+                                        q: neighbor.q,
+                                        r: neighbor.r,
+                                        s: neighbor.s,
+                                        dist: dist,
+                                        type: tile.type
+                                    });
+                                    
+                                    // Add ONE click handler for the sprite
+                                    const handler = () => {
+                                        // When clicked, use the move option with the lowest cost
+                                        if (tile.moveOptions && tile.moveOptions.length > 0) {
+                                            // Sort by distance and pick the first (lowest cost)
+                                            tile.moveOptions.sort((a, b) => a.dist - b.dist);
+                                            const bestMove = tile.moveOptions[0];
+                                            console.log(`CLICKED NON-MOVEMENT: Moving to Q=${bestMove.q}, R=${bestMove.r}, S=${bestMove.s}, Cost=${bestMove.dist}, Type=${bestMove.type}`);
+                                            this.debugText.setText(`CLICKED: Q=${bestMove.q}, R=${bestMove.r}, S=${bestMove.s}, Cost=${bestMove.dist}, Type=${bestMove.type}`);
+                                            this.socket.emit('moveShip', { q: bestMove.q, r: bestMove.r, s: bestMove.s, cost: bestMove.dist });
+                                            this.clearHighlights();
+                                        }
+                                    };
+                                    
+                                    // Store the handler for cleanup
+                                    if (!tile.clickHandlers) {
+                                        tile.clickHandlers = [];
+                                    }
+                                    tile.clickHandlers.push(handler);
+                                    
+                                    // Add the handler
+                                    if (spr.on) {
+                                        spr.on('pointerdown', handler);
+                                    }
+                                    
+                                    console.log(`[HIGHLIGHT] Added handler to non-movement tile ${neighbor.q},${neighbor.r},${neighbor.s} at dist ${dist}`);
+                                } else {
+                                    // Already highlighted, just add this as another move option
+                                    if (!tile.moveOptions) {
+                                        tile.moveOptions = [];
+                                    }
+                                    tile.moveOptions.push({
+                                        q: neighbor.q,
+                                        r: neighbor.r,
+                                        s: neighbor.s,
+                                        dist: dist,
+                                        type: tile.type
+                                    });
+                                }
                             }
                         }
                     }
@@ -951,22 +1093,47 @@ class GameScene extends Phaser.Scene {
         this.highlightedTiles.forEach(tile => {
             const spr = tile.sprite;
             
-            // Reset tint to default
-            if (spr.setTint) {
-                spr.setTint(tile.defaultTint);
-            }
-            
-            // Remove all click handlers for this tile
-            if (tile.clickHandlers && spr.off) {
-                tile.clickHandlers.forEach(handler => {
-                    spr.off('pointerdown', handler);
+            // For movement tiles with sub-triangles, clean up each sub-sprite individually
+            if (tile.type === 'movement' && spr.subHitAreas && spr.subHitAreas.length > 0) {
+                spr.subHitAreas.forEach(subHit => {
+                    const subSprite = subHit.sprite;
+                    
+                    // Reset tint to default
+                    subSprite.setTint(tile.defaultTint);
+                    
+                    // Remove click handler
+                    if (subSprite.clickHandler) {
+                        subSprite.off('pointerdown', subSprite.clickHandler);
+                        delete subSprite.clickHandler;
+                    }
+                    if (subSprite.moveData) {
+                        delete subSprite.moveData;
+                    }
+                    // Keep sub-triangles interactive for hover events
                 });
-                tile.clickHandlers = [];
-            }
-            
-            // Disable interactivity
-            if (spr.disableInteractive) {
-                spr.disableInteractive();
+            } else {
+                // For non-movement tiles, reset tint and remove handlers
+                if (spr.setTint) {
+                    spr.setTint(tile.defaultTint);
+                }
+                
+                // Remove click handlers and disable interactivity
+                if (tile.clickHandlers && spr.off) {
+                    tile.clickHandlers.forEach(handler => {
+                        spr.off('pointerdown', handler);
+                    });
+                    tile.clickHandlers = [];
+                }
+                
+                // Clear move options
+                if (tile.moveOptions) {
+                    tile.moveOptions = [];
+                }
+                
+                // Disable interactivity for non-movement tiles
+                if (spr.disableInteractive) {
+                    spr.disableInteractive();
+                }
             }
         });
         this.highlightedTiles = [];
@@ -1046,7 +1213,7 @@ class GameScene extends Phaser.Scene {
                 const shipY = Math.round(centerY + y + subY + offsetY);
                 const container = this.add.container(shipX, shipY, [shipGraphics]);
                 this.shipsGroup.add(container);
-                container.setDepth(10);
+                container.setDepth(3); // Above tiles (depth 2) but allow click-through
                 
                 // Add player name above ship
                 const nameText = this.add.text(0, -20, player.name, {
@@ -1057,17 +1224,24 @@ class GameScene extends Phaser.Scene {
                 }).setOrigin(0.5);
                 container.add(nameText);
 
-                // Make my ship interactive
+                // Make my ship interactive but allow events to pass through to tiles below
                 if (this.myPlayer && player.id === this.myPlayer.id) {
                     console.log('Making my ship interactive');
                     const hitArea = new Phaser.Geom.Circle(0, 0, 20);
                     container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
                     
-                    container.on('pointerdown', () => {
+                    // Stop event propagation so ship click doesn't also trigger tile clicks
+                    container.on('pointerdown', (pointer, localX, localY, event) => {
                         console.log('Pointer down on ship. Moves:', this.myPlayer.movesLeft);
+                        event.stopPropagation(); // Prevent tile clicks when clicking ship
                         if (this.myPlayer.movesLeft > 0) {
                             this.highlightReachableTiles(q, r, s, this.myPlayer.movesLeft);
                         }
+                    });
+                    
+                    // Add hover event that doesn't block tile hovers
+                    container.on('pointermove', (pointer, localX, localY, event) => {
+                        // Don't stop propagation for hover - let tiles underneath show their info too
                     });
                 }
             }
@@ -1143,6 +1317,9 @@ const config = {
     parent: 'game-container',
     scene: [GameScene, UIScene],
     backgroundColor: '#1a1a1a',
+    dom: {
+        createContainer: true
+    },
     scale: {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH

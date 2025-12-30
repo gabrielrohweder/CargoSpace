@@ -55,9 +55,11 @@ class Board {
                 }
             }
 
-            // Create the planet tiles
+            // Create the planet tiles with unique IDs
             for (let i = 0; i < 6; i++) {
-                this.planetTiles.push(new Planet());
+                const planet = new Planet();
+                planet.planetId = i;
+                this.planetTiles.push(planet);
             }
 
             // Create the black hole tile
@@ -175,6 +177,7 @@ class Board {
             const randomPair = availablePairs[Math.floor(Math.random() * availablePairs.length)];
             
             planetTile.occupiedPositions = [randomPair.p1, randomPair.p2];
+            // planetId is preserved from planet creation
             this.placeTile(planetTile, randomPair.p1.q, randomPair.p1.r);
             
             this.planetTiles.shift(); // Remove only on success
