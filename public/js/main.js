@@ -516,7 +516,7 @@ class GameScene extends Phaser.Scene {
 
             if (tile.type === 'planet' && positionPixels.length === 2) {
                 const [p0, p1] = positionPixels;
-                rotation = Math.atan2(p1.y - p0.y, p1.x - p0.x) - Math.PI / 2;
+                rotation = Math.atan2(p1.y - p0.y, p1.x - p0.x);
             }
 
             // Create the main sprite for this tile (may be destroyed later for movement tiles)
@@ -545,7 +545,7 @@ class GameScene extends Phaser.Scene {
                 sprite.setRotation(rotation);
                 sprite.setOrigin(0.5, 0.5);
             } else if (texture === 'rhombus') {
-                sprite.setDisplaySize(s, (2 * s * Math.sqrt(3)) / 3);
+                sprite.setDisplaySize(s, s * Math.sqrt(3));
                 sprite.setRotation(rotation);
                 sprite.setOrigin(0.5, 0.5);
             }
