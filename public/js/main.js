@@ -286,6 +286,7 @@ class GameScene extends Phaser.Scene {
         // Connect to Socket.io server
         this.socket = io();
         this.boardGroup = this.add.group();
+        this.boardOffset = { x: 0, y: 0 };
         this.players = []; // Initialize empty
         this.tileData = new Map();
         this.highlightedTiles = [];
@@ -429,32 +430,50 @@ class GameScene extends Phaser.Scene {
         console.log(`[DEBUG] renderBoard called with ${data.tiles.length} tiles.`);
         this.boardGroup.clear(true, true);
         this.tileData.clear();
-        this.teleportTiles = []; // Reset teleport tiles list
+        this.teleportTiles = []; 
         this.gridScale = data.gridScale || 100;
         const scale = this.gridScale;
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
 
+        let offsetX = 0;
+        let offsetY = 0;
+
+        const hubTile = data.tiles.find(t => t.type === 'hub');
+        if (hubTile) {
+            const hubPositions = (hubTile.occupiedPositions && hubTile.occupiedPositions.length > 0)
+                ? hubTile.occupiedPositions
+                : [{ q: hubTile.position.q, r: hubTile.position.r }];
+            if (hubPositions.length > 0) {
+                let hx = 0;
+                let hy = 0;
+                hubPositions.forEach(pos => {
+                    const { x: hxPos, y: hyPos } = this.axialToPixel(parseInt(pos.q), parseInt(pos.r), scale);
+                    hx += hxPos;
+                    hy += hyPos;
+                });
+                offsetX = -(hx / hubPositions.length);
+                offsetY = -(hy / hubPositions.length);
+            }
+        }
+
+        this.boardOffset = { x: offsetX, y: offsetY };
+
         data.tiles.forEach(tile => {
-            // Ensure coordinates are numbers
             const q = parseInt(tile.position.q);
             const r = parseInt(tile.position.r);
-            
-            // Use the new coordinate system logic
             const { x, y } = this.axialToPixel(q, r, scale);
+            const isUp = (Math.abs(q + r)) % 2 === 0;
+
+            // Determine base texture, tint and rotation for this tile
             let texture = 'triangle';
             let tint = 0xffffff;
-            let rotation = 0;
-
-            // Determine orientation based on grid coordinates
-            // (q + r) % 2 === 0 ? UP : DOWN
-            const isUp = (Math.abs(q + r)) % 2 === 0;
-            rotation = isUp ? 0 : Math.PI;
+            let rotation = isUp ? 0 : Math.PI;
 
             if (tile.type === 'hub') {
                 texture = 'hexagon';
                 tint = 0xcccccc;
-                rotation = 0; // Assume flat-topped hexagon image or handle via size
+                rotation = 0;
             } else if (tile.type === 'landing') {
                 texture = 'triangle';
                 tint = 0x00ff00;
@@ -464,155 +483,248 @@ class GameScene extends Phaser.Scene {
             } else if (tile.type === 'teleportation') {
                 texture = 'triangle';
                 tint = 0x0000ff;
-                // Store teleport tile key for BFS
-                this.teleportTiles.push(`${q},${r}`);
             } else if (tile.type === 'black_hole') {
                 texture = 'triangle';
                 tint = 0x000000;
-            } else if (tile.type === 'planet') { 
+            } else if (tile.type === 'planet') {
                 texture = 'rhombus';
-                // Determine rotation based on P1 and P2
-                // P1 is tile.position. P2 is the other occupied position.
-                // We need to find P2 from the tile data.
-                // The server sends 'occupiedPositions' for the planet tile.
-                // Let's assume data.tiles includes occupiedPositions for planets.
-                
-                let p2 = null;
-                if (tile.occupiedPositions && tile.occupiedPositions.length === 2) {
-                    // Find the one that is NOT tile.position
-                    p2 = tile.occupiedPositions.find(p => parseInt(p.q) !== q || parseInt(p.r) !== r);
-                }
-
-                if (p2) {
-                    const p2q = parseInt(p2.q);
-                    const p2r = parseInt(p2.r);
-                    const dq = p2q - q;
-                    
-                    // Calculate pixel positions
-                    const p1Pix = this.axialToPixel(q, r, scale);
-                    const p2Pix = this.axialToPixel(p2q, p2r, scale);
-
-                    // Midpoint
-                    const midX = (p1Pix.x + p2Pix.x) / 2;
-                    const midY = (p1Pix.y + p2Pix.y) / 2;
-
-                    // Override x and y for sprite placement
-                    // We'll set sprite position directly later.
-                    
-                    if (dq === 0) {
-                        // Vertical Rhombus (Stacked Up/Down)
-                        rotation = 0; 
-                    } else {
-                        // Slanted Rhombus (Side-by-side)
-                        // Determine slope.
-                        // If P1 is Left of P2 (dq=1).
-                        // P1(Down) -> P2(Up) ?
-                        // Or P1(Up) -> P2(Down) ?
-                        // Let's check P1 orientation.
-                        const isP1Up = (Math.abs(q + r)) % 2 === 0;
-                        
-                        // If P1 is Up. P2 must be Down.
-                        // If P2 is Right (dq=1). P1(Up) -> P2(Down). Slope \. Rotation 60.
-                        // If P2 is Left (dq=-1). P1(Up) -> P2(Down). Slope /. Rotation -60.
-                        
-                        // If P1 is Down. P2 must be Up.
-                        // If P2 is Right (dq=1). P1(Down) -> P2(Up). Slope /. Rotation -60.
-                        // If P2 is Left (dq=-1). P1(Down) -> P2(Up). Slope \. Rotation 60.
-                        
-                        const sign = isP1Up ? 1 : -1;
-                        rotation = sign * dq * (Math.PI / 3);
-                    }
-                    
-                    // Store midpoint for later use
-                    tile.midX = midX;
-                    tile.midY = midY;
-                }
-            } else if (tile.type === 'movement') {
-                texture = 'triangle';
+                tint = 0xff00ff;
             }
 
-            const sprite = this.add.sprite(centerX + x, centerY + y, texture);
+            const positions = (tile.occupiedPositions && tile.occupiedPositions.length > 0)
+                ? tile.occupiedPositions
+                : [{ q, r }];
+            const positionPixels = positions.map(pos => {
+                const pq = parseInt(pos.q);
+                const pr = parseInt(pos.r);
+                return this.axialToPixel(pq, pr, scale);
+            });
+
+            // If this tile spans multiple occupied positions (hub, planet, etc.), compute its centroid
+            // by averaging the pixel coordinates of all occupiedPositions so the main sprite is centered.
+            let anchorX = x;
+            let anchorY = y;
+            if (positionPixels.length > 0) {
+                const sum = positionPixels.reduce((acc, pos) => {
+                    acc.x += pos.x;
+                    acc.y += pos.y;
+                    return acc;
+                }, { x: 0, y: 0 });
+                anchorX = sum.x / positionPixels.length;
+                anchorY = sum.y / positionPixels.length;
+            }
+
+            if (tile.type === 'planet' && positionPixels.length === 2) {
+                const [p0, p1] = positionPixels;
+                rotation = Math.atan2(p1.y - p0.y, p1.x - p0.x) - Math.PI / 2;
+            }
+
+            // Create the main sprite for this tile (may be destroyed later for movement tiles)
+            const spriteX = Math.round(centerX + anchorX + offsetX);
+            const spriteY = Math.round(centerY + anchorY + offsetY);
+            const roundedSpriteX = Math.round(spriteX);
+            const roundedSpriteY = Math.round(spriteY);
+            const sprite = this.add.sprite(roundedSpriteX, roundedSpriteY, texture);
             sprite.setDepth(1);
             this.boardGroup.add(sprite);
             sprite.setTint(tint);
-            
-            // this.tileData.set(`${q},${r}`, {
-            //     type: tile.type,
-            //     sprite: sprite,
-            //     defaultTint: tint
-            // });
-            
-            const s = scale; // Side length matches scale in new grid
-            
+
+            // Debug: log a few sprite positions for inspection
+            if (tile.type === 'hub' || tile.type === 'planet' || tile.type === 'movement') {
+                console.log(`[DEBUG] tile main sprite (${tile.type}) at`, { q, r, spriteX: sprite.x, spriteY: sprite.y });
+            }
+
+            // Size & rotation adjustments per texture
+            const s = scale;
             if (texture === 'triangle') {
                 sprite.setDisplaySize(s, s * Math.sqrt(3) / 2);
                 sprite.setRotation(rotation);
+                sprite.setOrigin(0.5, 2/3);
             } else if (texture === 'hexagon') {
-                // Hub occupies 6 triangles.
-                // Center is at (0,0) in pixel space (relative to board center).
-                // Size should cover the 6 triangles.
-                // Width = 2 * s. Height = sqrt(3) * s.
                 sprite.setDisplaySize(2 * s, Math.sqrt(3) * s);
-                sprite.setRotation(rotation); 
-                
-                // Adjust position: The Hub sprite is drawn at (0,0) but the geometric center 
-                // of the 6 triangles is shifted up by half a triangle height.
-                // h = s * sqrt(3) / 2.
-                // Shift y by -h/2.
-                const h = s * Math.sqrt(3) / 2;
-                sprite.y -= h / 2;
-            } else if (texture === 'rhombus') {
-                sprite.setDisplaySize(s, s * Math.sqrt(3)); 
                 sprite.setRotation(rotation);
-                
-                if (tile.midX !== undefined && tile.midY !== undefined) {
-                    sprite.x = centerX + tile.midX;
-                    sprite.y = centerY + tile.midY;
-                }
-            } else {
-                sprite.setDisplaySize(s, s);
+                sprite.setOrigin(0.5, 0.5);
+            } else if (texture === 'rhombus') {
+                sprite.setDisplaySize(s, (2 * s * Math.sqrt(3)) / 3);
+                sprite.setRotation(rotation);
+                sprite.setOrigin(0.5, 0.5);
             }
 
-            if (tile.occupiedPositions && tile.occupiedPositions.length > 0) {
-                tile.occupiedPositions.forEach(pos => {
+            // The server sends 'occupiedPositions' for planets and multi-cell tiles.
+            // We can render movement tiles as subdivided triangles; other tiles keep the main sprite.
+
+            // If this is a movement tile, subdivide each triangular position into 4 sub-triangles.
+            if (tile.type === 'movement') {
+                // For movement tiles create one container per triangular position containing four small triangles
+                positions.forEach(pos => {
                     const pq = parseInt(pos.q);
                     const pr = parseInt(pos.r);
-                    this.tileData.set(`${pq},${pr}`, {
+                    const pIsUp = (Math.abs(pq + pr)) % 2 === 0;
+                    const { x: px, y: py } = this.axialToPixel(pq, pr, scale);
+                    const subScale = scale / 2;
+                    const sSide = scale;
+                    const H = sSide * Math.sqrt(3) / 2;
+                    const topCentroidY = -H / 3;
+                    const cornerCentroidY = H / 6;
+                    const leftX = -sSide / 4;
+                    const rightX = sSide / 4;
+
+                    // Create a container at the axial pixel for this position (rounded)
+                    const containerX = Math.round(centerX + px + offsetX);
+                    const containerY = Math.round(centerY + py + offsetY);
+                    const container = this.add.container(containerX, containerY);
+                    container.setDepth(1);
+
+                    // Create 4 triangle children placed relative to container
+                    const triangles = [];
+                    for (let si = 0; si < 4; si++) {
+                        let subX = 0, subY = 0, subRotation = 0;
+                        if (pIsUp) {
+                            if (si === 0) { subX = 0; subY = topCentroidY; subRotation = 0; }
+                            else if (si === 1) { subX = leftX; subY = cornerCentroidY; subRotation = 0; }
+                            else if (si === 2) { subX = rightX; subY = cornerCentroidY; subRotation = 0; }
+                            else { subX = 0; subY = 0; subRotation = Math.PI; }
+                        } else {
+                            if (si === 0) { subX = 0; subY = -topCentroidY; subRotation = Math.PI; }
+                            else if (si === 1) { subX = leftX; subY = -cornerCentroidY; subRotation = Math.PI; }
+                            else if (si === 2) { subX = rightX; subY = -cornerCentroidY; subRotation = Math.PI; }
+                            else { subX = 0; subY = 0; subRotation = 0; }
+                        }
+
+                        const tSprite = this.add.sprite(subX, subY, 'triangle');
+                        tSprite.setDisplaySize(subScale, subScale * Math.sqrt(3) / 2);
+                        tSprite.setOrigin(0.5, 2/3);
+                        tSprite.setRotation(subRotation);
+                        container.add(tSprite);
+                        triangles.push(tSprite);
+                    }
+
+                    // Create an invisible hit sprite to handle interactivity on the whole tile
+                    const hit = this.add.sprite(0, 0, 'triangle');
+                    hit.setDisplaySize(scale, scale * Math.sqrt(3) / 2);
+                    hit.setOrigin(0.5, 2/3);
+                    hit.setVisible(false);
+                    container.add(hit);
+
+                    // Add container to board group so it's managed similarly
+                    this.boardGroup.add(container);
+
+                    // Debug: report container position
+                    console.log('[DEBUG] movement container at', { pq, pr, containerX, containerY });
+
+                    // Wrapper object so existing code can call setTint/on/off/setInteractive
+                    const wrapper = {
+                        container: container,
+                        triangles: triangles,
+                        hit: hit,
+                        setTint: (color) => { triangles.forEach(t => t.setTint(color)); },
+                        setInteractive: () => { try { hit.setInteractive(); } catch(e){} },
+                        disableInteractive: () => { try { hit.disableInteractive(); } catch(e){} },
+                        on: (ev, cb) => { hit.on(ev, cb); },
+                        off: (ev) => { hit.off(ev); },
+                        destroy: () => { try { hit.destroy(); } catch(e){}; triangles.forEach(t=>{try{t.destroy();}catch(e){}}); try { container.destroy(); } catch(e){} }
+                    };
+
+                    // Default tint
+                    let tint = 0xffffff;
+                    if (tile.type === 'hub') tint = 0xcccccc;
+                    else if (tile.type === 'landing') tint = 0x00ff00;
+                    else if (tile.type === 'asteroid_belt') tint = 0x555555;
+                    else if (tile.type === 'teleportation') tint = 0x0000ff;
+                    else if (tile.type === 'black_hole') tint = 0x000000;
+                    else if (tile.type === 'planet') tint = 0xff00ff;
+
+                    // Apply initial tint to visible triangles
+                    wrapper.setTint(tint);
+
+                    // Register all four sub-keys to point to the same wrapper so movement logic still uses s
+                    for (let si = 0; si < 4; si++) {
+                        const key = `${pq},${pr},${si}`;
+                        this.tileData.set(key, {
+                            type: tile.type,
+                            sprite: wrapper,
+                            defaultTint: tint,
+                            q: pq, r: pr, s: si
+                        });
+                    }
+
+                    // Teleport canonical
+                    if (tile.type === 'teleportation') {
+                        const canonical = `${pq},${pr},3`;
+                        if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
+                    }
+                });
+
+                // Destroy the large main sprite for this tile so only sub-triangles remain visually
+                if (sprite && sprite.destroy) {
+                    sprite.destroy();
+                }
+            } else {
+                // Non-movement tiles: keep the single main sprite and register a canonical center sub-tile key
+                positions.forEach(pos => {
+                    const pq = parseInt(pos.q);
+                    const pr = parseInt(pos.r);
+                    const canonical = `${pq},${pr},3`;
+                    this.tileData.set(canonical, {
                         type: tile.type,
                         sprite: sprite,
-                        defaultTint: tint
+                        defaultTint: tint,
+                        q: pq, r: pr, s: 3
                     });
-                });
-            } else {
-                this.tileData.set(`${q},${r}`, {
-                    type: tile.type,
-                    sprite: sprite,
-                    defaultTint: tint
+
+                    if (tile.type === 'teleportation') {
+                        if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
+                    }
                 });
             }
         });
         console.log(`[DEBUG] tileData populated. Size: ${this.tileData.size}`);
     }
 
-    getNeighbors(q, r) {
-        const neighbors = [
-            { q: q - 1, r: r }, // Left
-            { q: q + 1, r: r }  // Right
-        ];
-        
-        if ((q + r) % 2 === 0) {
-            // Up triangle pointing up
-            neighbors.push({ q: q, r: r + 1 }); // Bottom
+    getNeighbors(q, r, s) {
+        const neighbors = [];
+        const isUp = (Math.abs(q + r)) % 2 === 0;
+
+        // Internal connections
+        if (s === 3) {
+            // Center connects to all corners
+            neighbors.push({ q, r, s: 0 });
+            neighbors.push({ q, r, s: 1 });
+            neighbors.push({ q, r, s: 2 });
         } else {
-            // Down triangle pointing down
-            neighbors.push({ q: q, r: r - 1 }); // Top
+            // Corners connect to Center
+            neighbors.push({ q, r, s: 3 });
+            
+            // External connections
+            if (isUp) {
+                if (s === 0) { // Top
+                    neighbors.push({ q: q - 1, r: r, s: 2 }); // Left Neighbor TR
+                    neighbors.push({ q: q + 1, r: r, s: 1 }); // Right Neighbor TL
+                } else if (s === 1) { // BL
+                    neighbors.push({ q: q - 1, r: r, s: 0 }); // Left Neighbor Bottom
+                    neighbors.push({ q: q, r: r + 1, s: 1 }); // Bottom Neighbor TL
+                } else if (s === 2) { // BR
+                    neighbors.push({ q: q + 1, r: r, s: 0 }); // Right Neighbor Bottom
+                    neighbors.push({ q: q, r: r + 1, s: 2 }); // Bottom Neighbor TR
+                }
+            } else { // Down Tile
+                if (s === 0) { // Bottom
+                    neighbors.push({ q: q - 1, r: r, s: 2 }); // Left Neighbor BR (Up Sub 2)
+                    neighbors.push({ q: q + 1, r: r, s: 1 }); // Right Neighbor BL (Up Sub 1)
+                } else if (s === 1) { // TL
+                    neighbors.push({ q: q - 1, r: r, s: 0 }); // Left Neighbor Top (Up Sub 0)
+                    neighbors.push({ q: q, r: r - 1, s: 1 }); // Top Neighbor BL (Up Sub 1)
+                } else if (s === 2) { // TR
+                    neighbors.push({ q: q + 1, r: r, s: 0 }); // Right Neighbor Top (Up Sub 0)
+                    neighbors.push({ q: q, r: r - 1, s: 2 }); // Top Neighbor BR (Up Sub 2)
+                }
+            }
         }
-        
         return neighbors;
     }
 
-    highlightReachableTiles(startQ, startR, range) {
-        console.log(`Highlighting tiles from ${startQ},${startR} range ${range}`);
+    highlightReachableTiles(startQ, startR, startS, range) {
+        console.log(`Highlighting tiles from ${startQ},${startR},${startS} range ${range}`);
         this.clearHighlights();
         
         if (range <= 0) return;
@@ -621,43 +733,55 @@ class GameScene extends Phaser.Scene {
         const occupiedTiles = new Set();
         this.players.forEach(p => {
             if (p.id !== this.socket.id && p.ship) {
-                occupiedTiles.add(`${p.ship.position.q},${p.ship.position.r}`);
+                // Default s to 3 (Center) if not present, though it should be present now
+                const s = p.ship.position.s !== undefined ? p.ship.position.s : 3;
+                occupiedTiles.add(`${p.ship.position.q},${p.ship.position.r},${s}`);
             }
         });
 
         const q = parseInt(startQ);
         const r = parseInt(startR);
+        const s = parseInt(startS);
 
-        const queue = [{ q: q, r: r, dist: 0 }];
+        const queue = [{ q, r, s, dist: 0 }];
         const visited = new Set();
-        visited.add(`${q},${r}`);
+        visited.add(`${q},${r},${s}`);
 
         while (queue.length > 0) {
             const current = queue.shift();
             
             // Teleportation Logic
-            const currentKey = `${current.q},${current.r}`;
+            const currentKey = `${current.q},${current.r},${current.s}`;
             const currentTileData = this.tileData.get(currentKey);
             
             if (currentTileData && currentTileData.type === 'teleportation') {
                 for (const teleKey of this.teleportTiles) {
                     if (teleKey !== currentKey && !visited.has(teleKey)) {
-                        const [tq, tr] = teleKey.split(',').map(Number);
+                        const [tq, tr, ts] = teleKey.split(',').map(Number);
                         visited.add(teleKey);
                         // Add to queue with SAME distance (instant travel)
-                        queue.push({ q: tq, r: tr, dist: current.dist });
+                        queue.push({ q: tq, r: tr, s: ts, dist: current.dist });
                         
                         // Highlight the destination teleport tile
                         const teleTile = this.tileData.get(teleKey);
                         if (teleTile) {
-                            teleTile.sprite.setTint(0xffff00);
-                            teleTile.sprite.setInteractive();
-                            teleTile.sprite.off('pointerdown');
-                            teleTile.sprite.on('pointerdown', () => {
-                                console.log(`Teleporting to ${tq},${tr} cost ${current.dist}`);
-                                this.socket.emit('moveShip', { q: tq, r: tr, cost: current.dist });
-                                this.clearHighlights();
-                            });
+                            const spr = teleTile.sprite;
+                            if (spr.setTint) spr.setTint(0xffff00); else if (spr.container) spr.container.setTint && spr.container.setTint(0xffff00);
+                            if (spr.setInteractive) spr.setInteractive(); else if (spr.hit) try { spr.hit.setInteractive(); } catch(e){}
+                            if (spr.off) spr.off('pointerdown'); else if (spr.hit) try { spr.hit.off('pointerdown'); } catch(e){}
+                            if (spr.on) {
+                                spr.on('pointerdown', () => {
+                                    console.log(`Teleporting to ${tq},${tr},${ts} cost ${current.dist}`);
+                                    this.socket.emit('moveShip', { q: tq, r: tr, s: ts, cost: current.dist });
+                                    this.clearHighlights();
+                                });
+                            } else if (spr.hit) {
+                                spr.hit.on('pointerdown', () => {
+                                    console.log(`Teleporting to ${tq},${tr},${ts} cost ${current.dist}`);
+                                    this.socket.emit('moveShip', { q: tq, r: tr, s: ts, cost: current.dist });
+                                    this.clearHighlights();
+                                });
+                            }
                             this.highlightedTiles.push(teleTile);
                         }
                     }
@@ -665,33 +789,67 @@ class GameScene extends Phaser.Scene {
             }
 
             if (current.dist < range) {
-                const neighbors = this.getNeighbors(current.q, current.r);
-                console.log(`[DEBUG] Neighbors of ${current.q},${current.r}:`, JSON.stringify(neighbors));
+                const neighbors = this.getNeighbors(current.q, current.r, current.s);
+                // console.log(`[DEBUG] Neighbors of ${current.q},${current.r},${current.s}:`, JSON.stringify(neighbors));
                 
                 for (const neighbor of neighbors) {
-                    const key = `${neighbor.q},${neighbor.r}`;
+                    const key = `${neighbor.q},${neighbor.r},${neighbor.s}`;
                     if (!visited.has(key)) {
                         const tile = this.tileData.get(key);
-                        console.log(`[DEBUG] Checking ${key}. Tile found: ${!!tile}`);
+                        // console.log(`[DEBUG] Checking ${key}. Tile found: ${!!tile}`);
                         // Check for obstacles: Asteroids, Black Holes, AND Occupied Tiles
                         const isOccupied = occupiedTiles.has(key);
                         
                         if (tile && tile.type !== 'asteroid_belt' && tile.type !== 'black_hole' && !isOccupied) {
-                            console.log(`Highlighting tile ${key}`);
+                            // console.log(`Highlighting tile ${key}`);
+                            
+                            let stepCost = 1;
+                            // Check if moving internally within a non-movement tile
+                            // If we are on the same q,r and the tile is NOT a movement tile, movement is free (it counts as one tile)
+                            if (current.q === neighbor.q && current.r === neighbor.r) {
+                                const currentTile = this.tileData.get(currentKey);
+                                if (currentTile && currentTile.type !== 'movement') {
+                                    stepCost = 0;
+                                }
+                            }
+
+                            const dist = current.dist + stepCost;
+                            
+                            // If we've already visited this node with a lower or equal distance, skip
+                            // But wait, if stepCost is 0, we might reach it with same distance.
+                            // The visited check is at the top of the loop: if (!visited.has(key))
+                            // This prevents re-visiting.
+                            // But BFS guarantees shortest path for unweighted graphs.
+                            // With 0 weights, it's slightly different (0-1 BFS), but standard BFS works if we process 0-cost edges immediately?
+                            // Or just treat it as normal. Since stepCost is 0 or 1, dist is monotonic.
+                            
                             visited.add(key);
-                            const dist = current.dist + 1;
-                            queue.push({ q: neighbor.q, r: neighbor.r, dist: dist });
+                            queue.push({ q: neighbor.q, r: neighbor.r, s: neighbor.s, dist: dist });
                             
                             // Highlight
-                            tile.sprite.setTint(0xffff00);
-                            tile.sprite.setInteractive();
-                            // Remove existing listeners to avoid duplicates if logic changes
-                            tile.sprite.off('pointerdown'); 
-                            tile.sprite.on('pointerdown', () => {
-                                console.log(`Moving to ${neighbor.q},${neighbor.r} cost ${dist}`);
-                                this.socket.emit('moveShip', { q: neighbor.q, r: neighbor.r, cost: dist });
-                                this.clearHighlights();
-                            });
+                            // Only highlight if dist > 0 (don't highlight current tile unless we moved back to it?)
+                            // Actually, if stepCost is 0, we are "moving" within the tile.
+                            // Should we highlight the sub-tiles?
+                            // If the user sees the whole tile as one, maybe we should highlight all sub-tiles?
+                            // For now, let's just highlight the target sub-tile.
+                            
+                            const spr = tile.sprite;
+                            if (spr.setTint) spr.setTint(0xffff00); else if (spr.container) spr.container.setTint && spr.container.setTint(0xffff00);
+                            if (spr.setInteractive) spr.setInteractive(); else if (spr.hit) try { spr.hit.setInteractive(); } catch(e){}
+                            if (spr.off) spr.off('pointerdown'); else if (spr.hit) try { spr.hit.off('pointerdown'); } catch(e){}
+                            if (spr.on) {
+                                spr.on('pointerdown', () => {
+                                    console.log(`Moving to ${neighbor.q},${neighbor.r},${neighbor.s} cost ${dist}`);
+                                    this.socket.emit('moveShip', { q: neighbor.q, r: neighbor.r, s: neighbor.s, cost: dist });
+                                    this.clearHighlights();
+                                });
+                            } else if (spr.hit) {
+                                spr.hit.on('pointerdown', () => {
+                                    console.log(`Moving to ${neighbor.q},${neighbor.r},${neighbor.s} cost ${dist}`);
+                                    this.socket.emit('moveShip', { q: neighbor.q, r: neighbor.r, s: neighbor.s, cost: dist });
+                                    this.clearHighlights();
+                                });
+                            }
                             this.highlightedTiles.push(tile);
                         }
                     }
@@ -702,9 +860,10 @@ class GameScene extends Phaser.Scene {
 
     clearHighlights() {
         this.highlightedTiles.forEach(tile => {
-            tile.sprite.setTint(tile.defaultTint);
-            tile.sprite.disableInteractive();
-            tile.sprite.off('pointerdown');
+            const spr = tile.sprite;
+            if (spr.setTint) spr.setTint(tile.defaultTint); else if (spr.triangles) spr.setTint(tile.defaultTint);
+            if (spr.disableInteractive) spr.disableInteractive(); else if (spr.hit) try { spr.hit.disableInteractive(); } catch(e){}
+            if (spr.off) spr.off('pointerdown'); else if (spr.hit) try { spr.hit.off('pointerdown'); } catch(e){}
         });
         this.highlightedTiles = [];
     }
@@ -719,6 +878,8 @@ class GameScene extends Phaser.Scene {
         const scale = this.gridScale || 100; // Should match grid scale
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
+        const offsetX = this.boardOffset ? this.boardOffset.x : 0;
+        const offsetY = this.boardOffset ? this.boardOffset.y : 0;
 
         this.myPlayer = players.find(p => p.id === this.socket.id);
         if (this.myPlayer) {
@@ -729,25 +890,66 @@ class GameScene extends Phaser.Scene {
 
         players.forEach(player => {
             if (player.ship) {
-                const { x, y } = this.axialToPixel(player.ship.position.q, player.ship.position.r, scale);
+                const q = parseInt(player.ship.position.q);
+                const r = parseInt(player.ship.position.r);
+                const s = player.ship.position.s !== undefined ? parseInt(player.ship.position.s) : 3;
                 
+                const { x, y } = this.axialToPixel(q, r, scale);
+                
+                // Calculate sub-tile offset
+                let subX = 0;
+                let subY = 0;
+                const isUp = (Math.abs(q + r)) % 2 === 0;
+                
+                // Use the same centroid math as renderBoard so ships align with sub-triangles.
+                const sSide = scale;
+                const H = sSide * Math.sqrt(3) / 2;
+                const topCentroidY = -H / 3;
+                const cornerCentroidY = H / 6;
+                const leftX = -sSide / 4;
+                const rightX = sSide / 4;
+
+                if (isUp) {
+                    if (s === 0) { // Top
+                        subX = 0; subY = topCentroidY;
+                    } else if (s === 1) { // Bottom-left
+                        subX = leftX; subY = cornerCentroidY;
+                    } else if (s === 2) { // Bottom-right
+                        subX = rightX; subY = cornerCentroidY;
+                    } else { // center
+                        subX = 0; subY = 0;
+                    }
+                } else {
+                    if (s === 0) { // Bottom
+                        subX = 0; subY = -topCentroidY;
+                    } else if (s === 1) { // Top-left
+                        subX = leftX; subY = -cornerCentroidY;
+                    } else if (s === 2) { // Top-right
+                        subX = rightX; subY = -cornerCentroidY;
+                    } else { // center
+                        subX = 0; subY = 0;
+                    }
+                }
+
                 // Draw ship as a circle for now
                 const shipGraphics = this.add.graphics();
                 shipGraphics.fillStyle(parseInt(player.color.replace('#', '0x')), 1);
-                shipGraphics.fillCircle(0, 0, 20);
+                shipGraphics.fillCircle(0, 0, 10); // Smaller ship for sub-tiles
                 shipGraphics.lineStyle(2, 0xffffff);
-                shipGraphics.strokeCircle(0, 0, 20);
+                shipGraphics.strokeCircle(0, 0, 10);
                 
-                const container = this.add.container(centerX + x, centerY + y, [shipGraphics]);
+                const shipX = Math.round(centerX + x + subX + offsetX);
+                const shipY = Math.round(centerY + y + subY + offsetY);
+                const container = this.add.container(shipX, shipY, [shipGraphics]);
                 this.shipsGroup.add(container);
                 container.setDepth(10);
                 
                 // Add player name above ship
-                const nameText = this.add.text(0, -30, player.name, {
-                    font: '14px Arial',
+                const nameText = this.add.text(0, -20, player.name, {
+                    font: '10px Arial',
                     fill: '#ffffff',
                     stroke: '#000000',
-                    strokeThickness: 3
+                    strokeThickness: 2
                 }).setOrigin(0.5);
                 container.add(nameText);
 
@@ -760,7 +962,7 @@ class GameScene extends Phaser.Scene {
                     container.on('pointerdown', () => {
                         console.log('Pointer down on ship. Moves:', this.myPlayer.movesLeft);
                         if (this.myPlayer.movesLeft > 0) {
-                            this.highlightReachableTiles(player.ship.position.q, player.ship.position.r, this.myPlayer.movesLeft);
+                            this.highlightReachableTiles(q, r, s, this.myPlayer.movesLeft);
                         }
                     });
                 }
@@ -818,13 +1020,13 @@ class GameScene extends Phaser.Scene {
     }
 
     axialToPixel(q, r, scale) {
-        // Matches src/grid.js logic
+        // Matches src/grid.js logic (triangular grid with parity offset)
         const s = scale;
         const h = s * Math.sqrt(3) / 2;
-        const w = s;
+        const parity = Math.abs(q + r) % 2; // 0 for up, 1 for down
 
-        const x = q * (w / 2);
-        const y = r * h;
+        const x = q * (s / 2);
+        const y = (r * h) - (parity ? h / 3 : 0);
 
         return { x, y };
     }

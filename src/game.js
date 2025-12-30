@@ -118,7 +118,8 @@ class Game {
         for (let i = 0; i < playerNames.length; i++) {
             const player = new Player(i, playerNames[i]);
             const ship = new Ship();
-            ship.position = this.board.hub.position;
+            // Default to Hub center (0,0) sub-index 3 (Center)
+            ship.position = { q: 0, r: 0, s: 3 };
             player.ship = ship;
             this.players.push(player);
         }

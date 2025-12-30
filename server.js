@@ -132,7 +132,7 @@ io.on('connection', (socket) => {
     socket.on('moveShip', (data) => {
         const player = game.players.find(p => p.id === socket.id);
         if (player && player.movesLeft >= data.cost) {
-            player.ship.position = { q: data.q, r: data.r };
+            player.ship.position = { q: data.q, r: data.r, s: data.s };
             player.movesLeft = 0; // Reset moves to 0 after moving
             io.emit('playersUpdate', game.players);
         }
