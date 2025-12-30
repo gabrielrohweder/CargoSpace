@@ -515,8 +515,23 @@ class GameScene extends Phaser.Scene {
             }
 
             if (tile.type === 'planet' && positionPixels.length === 2) {
+                // Get the pixel positions of both triangles
                 const [p0, p1] = positionPixels;
-                rotation = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+                
+                // Calculate the angle of the vector connecting the two triangle centers
+                const dx = p1.x - p0.x;
+                const dy = p1.y - p0.y;
+                const centerAngle = Math.atan2(dy, dx);
+                
+                // The rhombus sprite has width=s, height=s*sqrt(3) (vertically oriented by default)
+                // When two triangles share an edge, the rhombus should be rotated so its long axis
+                // aligns with the line connecting the two centers.
+                // Since the sprite is already vertical (long axis at 90°), we need to rotate it
+                // to align its long axis with the centerAngle direction.
+                // The long axis of the rhombus is perpendicular to its short axis.
+                // At 0 rotation, the rhombus is vertical (long axis at 90° from horizontal).
+                // To align the long axis with centerAngle, rotate by (centerAngle - 90°).
+                rotation = centerAngle - Math.PI / 2;
             }
 
             // Create the main sprite for this tile (may be destroyed later for movement tiles)
