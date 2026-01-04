@@ -56,6 +56,28 @@ class UIScene extends Phaser.Scene {
 
         this.socket.on('phaseChanged', (data) => {
             this.turnPhase = data.phase;
+            // Destroy popup when phase changes away from 'roll'
+            if (data.phase !== 'roll' && this.turnPopup) {
+                console.log('Phase changed to', data.phase, '- destroying popup');
+                try {
+                    // Make it invisible immediately
+                    this.turnPopup.setVisible(false);
+                    // Manually destroy all children
+                    if (this.turnPopup.list) {
+                        this.turnPopup.list.forEach(child => {
+                            try {
+                                child.destroy();
+                            } catch (e) {
+                                console.warn('Error destroying child:', e);
+                            }
+                        });
+                    }
+                    this.turnPopup.destroy();
+                } catch (e) {
+                    console.error('Error destroying popup on phase change:', e);
+                }
+                this.turnPopup = null;
+            }
         });
 
         this.socket.on('gameStarted', () => {
@@ -397,6 +419,12 @@ class UIScene extends Phaser.Scene {
             console.log('Not showing popup - not in roll phase');
             return;
         }
+        
+        // Don't create a new popup if one already exists
+        if (this.turnPopup) {
+            console.log('Popup already exists, not creating a new one');
+            return;
+        }
 
         console.log('Creating popup!');
         const centerX = this.cameras.main.width / 2;
@@ -434,12 +462,25 @@ class UIScene extends Phaser.Scene {
         
         btn.on('pointerdown', () => {
             console.log('Roll Dice button clicked, popup exists:', !!this.turnPopup);
-            this.socket.emit('rollDice');
-            console.log('Destroying popup after dice roll');
+            // Disable the button immediately to prevent double-clicks
+            btn.setInteractive(false);
             if (this.turnPopup) {
+                console.log('Attempting to destroy popup');
+                // Make popup invisible immediately
+                this.turnPopup.setVisible(false);
                 try {
+                    // Manually destroy all children
+                    if (this.turnPopup.list) {
+                        this.turnPopup.list.forEach(child => {
+                            try {
+                                child.destroy();
+                            } catch (e) {
+                                console.warn('Error destroying child:', e);
+                            }
+                        });
+                    }
                     this.turnPopup.destroy();
-                    console.log('Popup destroyed successfully');
+                    console.log('Popup and all children destroyed successfully');
                 } catch (e) {
                     console.error('Error destroying popup:', e);
                 }
@@ -447,6 +488,7 @@ class UIScene extends Phaser.Scene {
             } else {
                 console.warn('turnPopup was null when trying to destroy');
             }
+            this.socket.emit('rollDice');
         });
         
         btn.on('pointerover', () => btn.fillColor = 0x666666);
@@ -490,12 +532,25 @@ class UIScene extends Phaser.Scene {
                 
                 cardRect.on('pointerdown', () => {
                     console.log('Function card clicked:', card.name, 'index:', index, 'popup exists:', !!this.turnPopup);
-                    this.socket.emit('playFunctionCard', { cardIndex: index });
-                    console.log('Destroying popup after function card click');
+                    // Disable the card immediately to prevent double-clicks
+                    cardRect.setInteractive(false);
                     if (this.turnPopup) {
+                        console.log('Attempting to destroy popup');
+                        // Make popup invisible immediately
+                        this.turnPopup.setVisible(false);
                         try {
+                            // Manually destroy all children
+                            if (this.turnPopup.list) {
+                                this.turnPopup.list.forEach(child => {
+                                    try {
+                                        child.destroy();
+                                    } catch (e) {
+                                        console.warn('Error destroying child:', e);
+                                    }
+                                });
+                            }
                             this.turnPopup.destroy();
-                            console.log('Popup destroyed successfully');
+                            console.log('Popup and all children destroyed successfully');
                         } catch (e) {
                             console.error('Error destroying popup:', e);
                         }
@@ -503,6 +558,7 @@ class UIScene extends Phaser.Scene {
                     } else {
                         console.warn('turnPopup was null when trying to destroy');
                     }
+                    this.socket.emit('playFunctionCard', { cardIndex: index });
                 });
                 
                 cardRect.on('pointerover', () => cardRect.fillColor = 0xCC00CC);
