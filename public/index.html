@@ -12,6 +12,10 @@
     <div id="game-container"></div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/phaser.min.js"></script>
+    <script>
+        // Initialize socket before creating the game
+        const socket = io();
+    </script>
     <script src="js/main.js"></script>
 </body>
 </html>

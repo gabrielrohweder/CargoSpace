@@ -1,11 +1,372 @@
+class LobbyScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'LobbyScene' });
+    }
+
+    create(data) {
+        try {
+            this.socket = data && data.socket ? data.socket : socket;
+            console.log('LobbyScene created with socket id:', this.socket ? this.socket.id : 'NO SOCKET');
+            
+            this.cameras.main.setBackgroundColor('#1a1a2e');
+            
+            // Title
+            const width = this.cameras.main.width;
+            const height = this.cameras.main.height;
+            
+            const titleText = this.add.text(width / 2, 40, 'CargoSpace - Game Lobby', {
+                font: 'bold 48px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+            // Listen for lobby updates
+            if (this.socket) {
+                this.socket.on('lobbyData', (data) => {
+                    this.updateGameList(data.availableGames);
+                });
+                
+                this.socket.on('lobbyUpdate', (data) => {
+                    this.updateGameList(data.availableGames);
+                });
+            }
+            
+            // Create Game button
+            const createBtn = this.add.rectangle(width / 2, height - 40, 200, 60, 0x2a9d8f).setInteractive();
+            createBtn.on('pointerdown', () => this.showCreateGamePopup());
+            createBtn.on('pointerover', () => createBtn.fillColor = 0x3bb5a3);
+            createBtn.on('pointerout', () => createBtn.fillColor = 0x2a9d8f);
+            
+            const btnText = this.add.text(width / 2, height - 40, 'Create Game', {
+                font: 'bold 24px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+            // Container for game list
+            this.gameListContainer = this.add.container(0, 120);
+            
+            // Request initial lobby data
+            if (this.socket) {
+                this.socket.emit('getLobbyData');
+            }
+            
+            // Show initial message
+            const statusText = this.add.text(width / 2, height / 2, 'Loading games...', {
+                font: 'bold 24px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+        } catch (error) {
+            console.error('Error creating LobbyScene:', error);
+        }
+    }
+
+    updateGameList(games) {
+        // Clear existing games
+        this.gameListContainer.removeAll(true);
+        
+        if (games.length === 0) {
+            const noGamesText = this.add.text(this.cameras.main.width / 2, 200, 'No games available. Create one!', {
+                font: '24px Arial',
+                fill: '#888888'
+            }).setOrigin(0.5);
+            this.gameListContainer.add(noGamesText);
+            return;
+        }
+        
+        let yPos = 0;
+        games.forEach((game, index) => {
+            const gameLabel = this.add.text(40, yPos, `${game.name} (${game.playerCount}/${game.maxPlayers})`, {
+                font: 'bold 20px Arial',
+                fill: '#ffffff'
+            });
+            
+            const gameDetails = this.add.text(40, yPos + 30, `Tiles: ${game.movementTiles} | Asteroids: ${game.asteroidBelts ? 'Yes' : 'No'}`, {
+                font: '16px Arial',
+                fill: '#aaaaaa'
+            });
+            
+            const joinBtn = this.add.rectangle(this.cameras.main.width - 100, yPos + 20, 150, 50, 0x264653).setInteractive();
+            joinBtn.on('pointerdown', () => {
+                // Show popup to get player name
+                this.showJoinGamePopup(game.gameId);
+            });
+            joinBtn.on('pointerover', () => joinBtn.fillColor = 0x2a5a7f);
+            joinBtn.on('pointerout', () => joinBtn.fillColor = 0x264653);
+            
+            const joinBtnText = this.add.text(this.cameras.main.width - 100, yPos + 20, 'Join', {
+                font: 'bold 16px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+            this.gameListContainer.add([gameLabel, gameDetails, joinBtn, joinBtnText]);
+            yPos += 100;
+        });
+    }
+
+    showCreateGamePopup() {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        
+        // Create popup background
+        const popupBg = this.add.rectangle(width / 2, height / 2, 600, 550, 0x000000, 0.9).setInteractive();
+        popupBg.setStrokeStyle(4, 0xffffff);
+        popupBg.setScrollFactor(0).setDepth(3000);
+        
+        const popupContainer = this.add.container(width / 2, height / 2).setScrollFactor(0).setDepth(3000);
+        
+        // Title
+        const popupTitle = this.add.text(0, -240, 'Create Game', {
+            font: 'bold 32px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        let yOffset = -200;
+        
+        // Player Name input
+        const playerNameLabel = this.add.text(-250, yOffset, 'Your Name:', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        });
+        
+        const playerNameInput = document.createElement('input');
+        playerNameInput.type = 'text';
+        playerNameInput.placeholder = 'Your Player Name';
+        playerNameInput.style.position = 'fixed';
+        playerNameInput.style.left = (width / 2) + 'px';
+        playerNameInput.style.top = (height / 2 + yOffset - 15) + 'px';
+        playerNameInput.style.width = '200px';
+        playerNameInput.style.height = '30px';
+        playerNameInput.style.fontSize = '16px';
+        document.body.appendChild(playerNameInput);
+        
+        yOffset += 60;
+        
+        // Game Name input
+        const nameLabel = this.add.text(-250, yOffset, 'Game Name:', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        });
+        
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.placeholder = 'My Game';
+        nameInput.style.position = 'fixed';
+        nameInput.style.left = (width / 2) + 'px';
+        nameInput.style.top = (height / 2 + yOffset - 15) + 'px';
+        nameInput.style.width = '200px';
+        nameInput.style.height = '30px';
+        nameInput.style.fontSize = '16px';
+        document.body.appendChild(nameInput);
+        
+        yOffset += 60;
+        
+        // Movement Tiles
+        const tilesLabel = this.add.text(-250, yOffset, 'Movement Tiles:', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        });
+        
+        const tilesInput = document.createElement('input');
+        tilesInput.type = 'number';
+        tilesInput.value = '6';
+        tilesInput.min = '3';
+        tilesInput.max = '12';
+        tilesInput.style.position = 'fixed';
+        tilesInput.style.left = (width / 2) + 'px';
+        tilesInput.style.top = (height / 2 + yOffset - 15) + 'px';
+        tilesInput.style.width = '200px';
+        tilesInput.style.height = '30px';
+        tilesInput.style.fontSize = '16px';
+        document.body.appendChild(tilesInput);
+        
+        yOffset += 60;
+        
+        // Asteroid Belts
+        const asteroidsLabel = this.add.text(-250, yOffset, 'Asteroid Belts:', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        });
+        
+        const asteroidsCheckbox = document.createElement('input');
+        asteroidsCheckbox.type = 'checkbox';
+        asteroidsCheckbox.style.position = 'fixed';
+        asteroidsCheckbox.style.left = (width / 2) + 'px';
+        asteroidsCheckbox.style.top = (height / 2 + yOffset) + 'px';
+        asteroidsCheckbox.style.width = '20px';
+        asteroidsCheckbox.style.height = '20px';
+        document.body.appendChild(asteroidsCheckbox);
+        
+        yOffset += 60;
+        
+        // Max Players
+        const playersLabel = this.add.text(-250, yOffset, 'Max Players:', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        });
+        
+        const playersInput = document.createElement('input');
+        playersInput.type = 'number';
+        playersInput.value = '4';
+        playersInput.min = '2';
+        playersInput.max = '6';
+        playersInput.style.position = 'fixed';
+        playersInput.style.left = (width / 2) + 'px';
+        playersInput.style.top = (height / 2 + yOffset - 15) + 'px';
+        playersInput.style.width = '200px';
+        playersInput.style.height = '30px';
+        playersInput.style.fontSize = '16px';
+        document.body.appendChild(playersInput);
+        
+        yOffset += 80;
+        
+        // Create button
+        const createBtn = this.add.rectangle(0, yOffset, 150, 50, 0x2a9d8f).setInteractive();
+        createBtn.on('pointerdown', () => {
+            const playerName = playerNameInput.value || 'Player';
+            const gameName = nameInput.value || 'Unnamed Game';
+            const movementTiles = parseInt(tilesInput.value) || 6;
+            const asteroidBelts = asteroidsCheckbox.checked;
+            const maxPlayers = parseInt(playersInput.value) || 4;
+            
+            this.socket.emit('createGame', {
+                playerName: playerName,
+                gameName: gameName,
+                movementTiles: movementTiles,
+                asteroidBelts: asteroidBelts,
+                maxPlayers: maxPlayers
+            });
+            
+            // Clean up HTML inputs
+            document.body.removeChild(playerNameInput);
+            document.body.removeChild(nameInput);
+            document.body.removeChild(tilesInput);
+            document.body.removeChild(asteroidsCheckbox);
+            document.body.removeChild(playersInput);
+            
+            popupBg.destroy();
+            popupContainer.destroy();
+            
+            // Wait for connectionData event, then start game
+            this.socket.once('connectionData', (connectionData) => {
+                console.log('LobbyScene: Received connectionData, starting GameScene');
+                this.scene.start('GameScene', { socket: this.socket, gameId: connectionData.gameId, connectionData: connectionData });
+            });
+        });
+        createBtn.on('pointerover', () => createBtn.fillColor = 0x3bb5a3);
+        createBtn.on('pointerout', () => createBtn.fillColor = 0x2a9d8f);
+        
+        const createBtnText = this.add.text(0, yOffset, 'Create', {
+            font: 'bold 20px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        // Cancel button
+        const cancelBtn = this.add.rectangle(0, yOffset + 70, 150, 50, 0xe76f51).setInteractive();
+        cancelBtn.on('pointerdown', () => {
+            // Clean up HTML inputs
+            document.body.removeChild(nameInput);
+            document.body.removeChild(tilesInput);
+            document.body.removeChild(asteroidsCheckbox);
+            document.body.removeChild(playersInput);
+            
+            popupBg.destroy();
+            popupContainer.destroy();
+        });
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xf4a261);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0xe76f51);
+        
+        const cancelBtnText = this.add.text(0, yOffset + 70, 'Cancel', {
+            font: 'bold 20px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        popupContainer.add([popupTitle, nameLabel, tilesLabel, asteroidsLabel, playersLabel, createBtn, createBtnText, cancelBtn, cancelBtnText]);
+    }
+
+    showJoinGamePopup(gameId) {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        
+        // Create popup background
+        const popupBg = this.add.rectangle(width / 2, height / 2, 500, 300, 0x000000, 0.9).setInteractive();
+        popupBg.setStrokeStyle(4, 0xffffff);
+        popupBg.setScrollFactor(0).setDepth(3000);
+        
+        const popupContainer = this.add.container(width / 2, height / 2).setScrollFactor(0).setDepth(3000);
+        
+        // Title
+        const popupTitle = this.add.text(0, -100, 'Join Game', {
+            font: 'bold 32px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        // Player Name input
+        const playerNameLabel = this.add.text(-200, -40, 'Your Name:', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        });
+        
+        const playerNameInput = document.createElement('input');
+        playerNameInput.type = 'text';
+        playerNameInput.placeholder = 'Your Player Name';
+        playerNameInput.style.position = 'fixed';
+        playerNameInput.style.left = (width / 2) + 'px';
+        playerNameInput.style.top = (height / 2 - 40) + 'px';
+        playerNameInput.style.width = '200px';
+        playerNameInput.style.height = '30px';
+        playerNameInput.style.fontSize = '16px';
+        document.body.appendChild(playerNameInput);
+        
+        // Join button
+        const joinBtn = this.add.rectangle(0, 60, 150, 50, 0x264653).setInteractive();
+        joinBtn.on('pointerdown', () => {
+            const playerName = playerNameInput.value || 'Player';
+            this.socket.emit('joinGame', { gameId: gameId, playerName: playerName });
+            
+            // Wait for connectionData before starting game
+            this.socket.once('connectionData', (connectionData) => {
+                console.log('LobbyScene: Received connectionData after join, starting GameScene');
+                document.body.removeChild(playerNameInput);
+                popupBg.destroy();
+                popupContainer.destroy();
+                this.scene.start('GameScene', { socket: this.socket, connectionData: connectionData });
+            });
+        });
+        joinBtn.on('pointerover', () => joinBtn.fillColor = 0x2a5a7f);
+        joinBtn.on('pointerout', () => joinBtn.fillColor = 0x264653);
+        
+        const joinBtnText = this.add.text(0, 60, 'Join', {
+            font: 'bold 20px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        // Cancel button
+        const cancelBtn = this.add.rectangle(0, 130, 150, 50, 0xe76f51).setInteractive();
+        cancelBtn.on('pointerdown', () => {
+            document.body.removeChild(playerNameInput);
+            popupBg.destroy();
+            popupContainer.destroy();
+        });
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xf4a261);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0xe76f51);
+        
+        const cancelBtnText = this.add.text(0, 130, 'Cancel', {
+            font: 'bold 20px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        popupContainer.add([popupTitle, playerNameLabel, joinBtn, joinBtnText, cancelBtn, cancelBtnText]);
+    }
+}
+
 class UIScene extends Phaser.Scene {
     constructor() {
         super({ key: 'UIScene' });
     }
 
     create(data) {
-        this.socket = data.socket;
-        console.log('UIScene created with socket id:', this.socket.id);
+        this.socket = data && data.socket ? data.socket : socket;
+        console.log('UIScene created with socket id:', this.socket ? this.socket.id : 'NO SOCKET');
         this.otherPlayersGroup = this.add.group();
         this.currentPlayerGroup = this.add.group();
         this.players = [];
@@ -33,13 +394,26 @@ class UIScene extends Phaser.Scene {
 
         this.createDiceDisplay();
 
+        // Set up socket listeners
+        this.setupSocketListeners();
+    }
+
+    setupSocketListeners() {
+        if (!this.socket) return;
+
         this.socket.on('playersUpdate', (players) => {
+            console.log('UIScene received playersUpdate:', players.length, 'players');
             this.players = players;
-            this.renderUI(players);
+            // Only render if gameListContainer exists (UI is fully initialized)
+            if (this.otherPlayersGroup && this.currentPlayerGroup) {
+                console.log('UIScene: Rendering players');
+                this.renderUI(players);
+            } else {
+                console.log('UIScene: UI not ready, skipping render');
+            }
             if (this.currentDiceData) {
                 this.updateDiceDisplay(this.currentDiceData);
             }
-            // this.updateStartButton(); // Start button is in GameScene, not UIScene
         });
 
         this.socket.on('diceRolled', (data) => {
@@ -591,6 +965,93 @@ class UIScene extends Phaser.Scene {
             default: return '';
         }
     }
+
+    showStartButton(socket) {
+        console.log('UIScene.showStartButton called with socket:', socket ? socket.id : 'NO SOCKET');
+        console.log('UIScene.this.socket:', this.socket ? this.socket.id : 'NO SOCKET');
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+
+        this.startButton = this.add.container(centerX, centerY);
+
+        const bg = this.add.rectangle(0, 0, 200, 80, 0x555555).setInteractive(); // Default to disabled color
+        bg.setStrokeStyle(4, 0xffffff);
+        
+        const text = this.add.text(0, 0, 'START GAME', {
+            font: '28px Arial',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        this.startButton.add([bg, text]);
+
+        bg.on('pointerdown', () => {
+            console.log('Start Game button pointerdown event fired');
+            console.log('this.startButton.alpha:', this.startButton.alpha);
+            // Only emit if enabled (checked by alpha)
+            if (this.startButton.alpha === 1) {
+                console.log('Start Game button clicked, emitting startGame to socket:', this.socket ? this.socket.id : 'NO SOCKET');
+                this.socket.emit('startGame');
+            } else {
+                console.log('Button disabled (alpha=' + this.startButton.alpha + ')');
+            }
+        });
+
+        bg.on('pointerover', () => {
+            if (this.startButton.alpha === 1) bg.fillColor = 0x00cc00;
+        });
+        bg.on('pointerout', () => {
+            if (this.startButton.alpha === 1) bg.fillColor = 0x00aa00;
+        });
+        
+        this.updateStartButton();
+    }
+
+    updateStartButton(players) {
+        if (this.startButton && this.startButton.active) {
+            const canStart = !players || players.length >= 1;
+            // Check if children exist
+            if (this.startButton.list.length > 0) {
+                const bg = this.startButton.getAt(0);
+                if (bg) {
+                    if (canStart) {
+                        bg.setInteractive();
+                        bg.fillColor = 0x00aa00;
+                        this.startButton.alpha = 1;
+                    } else {
+                        bg.disableInteractive();
+                        bg.fillColor = 0x555555;
+                        this.startButton.alpha = 0.5;
+                    }
+                }
+            }
+        }
+    }
+
+    hideStartButton() {
+        if (this.startButton) {
+            this.startButton.destroy();
+            this.startButton = null;
+        }
+    }
+
+    showWaitingMessage() {
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+
+        this.waitingText = this.add.text(centerX, centerY, 'Waiting for host to start...', {
+            font: '32px Arial',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+    }
+
+    hideWaitingMessage() {
+        if (this.waitingText) {
+            this.waitingText.destroy();
+            this.waitingText = null;
+        }
+    }
 }
 
 class GameScene extends Phaser.Scene {
@@ -622,7 +1083,11 @@ class GameScene extends Phaser.Scene {
         this.load.image('teleporter', 'assets/images/teleporter.gif');
     }
 
-    create() {
+    create(data) {
+        // Get socket from data passed from LobbyScene or use global socket
+        this.socket = (data && data.socket) ? data.socket : socket;
+        this.gameId = (data && data.gameId) ? data.gameId : null;
+        
         // Create Starfield
         this.createStarTexture('stars1', 400, 1, 0.3);
         this.createStarTexture('stars2', 200, 2, 0.6);
@@ -645,8 +1110,6 @@ class GameScene extends Phaser.Scene {
             padding: { x: 10, y: 5 }
         }).setScrollFactor(0).setDepth(1000);
 
-        // Connect to Socket.io server
-        this.socket = io();
         this.boardGroup = this.add.group();
         this.boardOffset = { x: 0, y: 0 };
         this.players = []; // Initialize empty
@@ -655,35 +1118,22 @@ class GameScene extends Phaser.Scene {
         this.highlightMarkers = [];
         this.waitingForMovementMarkers = false; // Flag for auto-showing movement markers
 
-        // Launch UI Scene
-        this.scene.launch('UIScene', { socket: this.socket });
-
         this.socket.on('connect', () => {
             console.log('Connected to server!');
         });
 
         this.socket.on('connectionData', (data) => {
-            this.isHost = data.isHost;
-            this.gameStarted = data.gameStarted;
-            
-            if (this.gameStarted) {
-                this.renderBoard(data.boardState);
-            } else if (this.isHost) {
-                this.showStartButton();
-            } else {
-                this.showWaitingMessage();
-            }
+            console.log('GameScene received connectionData:', data);
+            this.handleConnectionData(data);
         });
-
-        this.socket.on('gameStarted', (data) => {
+        
+        // Register socket listeners only once
+        this.socket.once('gameStarted', (data) => {
             this.gameStarted = true;
-            if (this.startButton) {
-                this.startButton.destroy();
-                this.startButton = null;
-            }
-            if (this.waitingText) {
-                this.waitingText.destroy();
-                this.waitingText = null;
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene) {
+                uiScene.hideStartButton();
+                uiScene.hideWaitingMessage();
             }
             this.renderBoard(data);
         });
@@ -693,9 +1143,13 @@ class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('playersUpdate', (players) => {
+            console.log('GameScene received playersUpdate:', players.length, 'players');
             this.players = players;
             this.renderShips(players);
-            this.updateStartButton();
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene) {
+                uiScene.updateStartButton(players);
+            }
             
             // Check if we should auto-show movement markers after dice roll
             if (this.waitingForMovementMarkers) {
@@ -721,6 +1175,9 @@ class GameScene extends Phaser.Scene {
             console.log('[DEBUG]', msg);
         });
 
+        // Launch UI Scene AFTER registering socket handlers
+        this.scene.launch('UIScene', { socket: this.socket });
+
         // Add camera controls
         this.input.on('pointermove', (pointer) => {
             if (pointer.isDown) {
@@ -733,80 +1190,44 @@ class GameScene extends Phaser.Scene {
             const newZoom = this.cameras.main.zoom - (deltaY * 0.001);
             this.cameras.main.zoom = Phaser.Math.Clamp(newZoom, 0.1, 2);
         });
-
-        // Don't clear highlights on background click - let them persist until player moves
-        // this.input.on('pointerdown', (pointer, gameObjects) => {
-        //     if (gameObjects.length === 0) {
-        //         this.clearHighlights();
-        //     }
-        // });
-    }
-
-    showStartButton() {
-        const centerX = this.cameras.main.width / 2;
-        const centerY = this.cameras.main.height / 2;
-
-        this.startButton = this.add.container(centerX, centerY);
-
-        const bg = this.add.rectangle(0, 0, 200, 80, 0x555555).setInteractive(); // Default to disabled color
-        bg.setStrokeStyle(4, 0xffffff);
         
-        const text = this.add.text(0, 0, 'START GAME', {
-            font: '28px Arial',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        this.startButton.add([bg, text]);
-
-        bg.on('pointerdown', () => {
-            // Only emit if enabled (checked by color/alpha or logic)
-            if (this.startButton.alpha === 1) {
-                this.socket.emit('startGame');
-            }
-        });
-
-        bg.on('pointerover', () => {
-            if (this.startButton.alpha === 1) bg.fillColor = 0x00cc00;
-        });
-        bg.on('pointerout', () => {
-            if (this.startButton.alpha === 1) bg.fillColor = 0x00aa00;
-        });
-        
-        this.updateStartButton();
-    }
-
-    updateStartButton() {
-        if (this.startButton && this.startButton.active && this.players) {
-            const canStart = this.players.length >= 1;
-            // Check if children exist
-            if (this.startButton.list.length > 0) {
-                const bg = this.startButton.getAt(0);
-                if (bg) {
-                    if (canStart) {
-                        bg.setInteractive();
-                        bg.fillColor = 0x00aa00;
-                        this.startButton.alpha = 1;
-                    } else {
-                        bg.disableInteractive();
-                        bg.fillColor = 0x555555;
-                        this.startButton.alpha = 0.5;
-                    }
-                }
-            }
+        // If connectionData was passed from LobbyScene, handle it immediately
+        if (data && data.connectionData) {
+            console.log('GameScene: Using connectionData passed from LobbyScene');
+            this.handleConnectionData(data.connectionData);
         }
     }
-
-    showWaitingMessage() {
-        const centerX = this.cameras.main.width / 2;
-        const centerY = this.cameras.main.height / 2;
-
-        this.waitingText = this.add.text(centerX, centerY, 'Waiting for host to start...', {
-            font: '32px Arial',
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 4
-        }).setOrigin(0.5);
+    
+    handleConnectionData(data) {
+        console.log('GameScene.handleConnectionData:', data);
+        this.isHost = data.isHost;
+        this.gameStarted = data.gameStarted;
+        this.gameId = data.gameId;
+        
+        console.log('GameScene: isHost=' + this.isHost + ', gameStarted=' + this.gameStarted);
+        
+        // Store game context in localStorage so player can rejoin if they refresh
+        localStorage.setItem('gameContext', JSON.stringify({
+            gameId: this.gameId,
+            playerName: data.playerName || `Player ${Math.floor(Math.random() * 1000)}`,
+            timestamp: Date.now()
+        }));
+        
+        if (this.gameStarted) {
+            this.renderBoard(data.boardState);
+        } else if (this.isHost) {
+            console.log('GameScene: Signaling UIScene to show start button');
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene) {
+                uiScene.showStartButton(this.socket);
+            }
+        } else {
+            console.log('GameScene: Signaling UIScene to show waiting message');
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene) {
+                uiScene.showWaitingMessage();
+            }
+        }
     }
 
     renderBoard(data) {
@@ -2034,7 +2455,7 @@ const config = {
     width: window.innerWidth,
     height: window.innerHeight,
     parent: 'game-container',
-    scene: [GameScene, UIScene],
+    scene: [LobbyScene, GameScene, UIScene],
     backgroundColor: '#1a1a1a',
     dom: {
         createContainer: true
@@ -2045,4 +2466,78 @@ const config = {
     }
 };
 
+// Create the game immediately
 const game = new Phaser.Game(config);
+
+// Start the lobby scene and pass socket when it's ready
+socket.on('connect', () => {
+    console.log('Connected to server with socket ID:', socket.id);
+    
+    // Check if player was in a game before refresh
+    const gameContext = localStorage.getItem('gameContext');
+    if (gameContext) {
+        try {
+            const context = JSON.parse(gameContext);
+            console.log('Found game context in localStorage:', context);
+            
+            let rejoinSucceeded = false;
+            
+            // Listen for rejoin success
+            const handleConnectionData = (connectionData) => {
+                console.log('Reconnected to game, starting GameScene');
+                rejoinSucceeded = true;
+                socket.removeListener('error', handleRejoinError);
+                game.scene.start('GameScene', { socket: socket, connectionData: connectionData });
+            };
+            
+            // Listen for rejoin failure
+            const handleRejoinError = (errorMsg) => {
+                console.warn('Rejoin failed:', errorMsg);
+                socket.removeListener('connectionData', handleConnectionData);
+                localStorage.removeItem('gameContext');
+                // Stop UIScene and GameScene if they were started
+                if (game.scene.isActive('UIScene')) {
+                    game.scene.stop('UIScene');
+                }
+                if (game.scene.isActive('GameScene')) {
+                    game.scene.stop('GameScene');
+                }
+                game.scene.start('LobbyScene', { socket: socket });
+            };
+            
+            socket.once('connectionData', handleConnectionData);
+            socket.once('error', handleRejoinError);
+            
+            // Try to rejoin the game
+            socket.emit('rejoinGame', {
+                gameId: context.gameId,
+                playerName: context.playerName
+            });
+            
+            // Timeout after 5 seconds - if rejoin fails, go to lobby
+            setTimeout(() => {
+                if (!rejoinSucceeded && game.scene.isActive('LobbyScene') === false && game.scene.isActive('GameScene') === false) {
+                    console.log('Rejoin timeout, starting LobbyScene');
+                    socket.removeListener('connectionData', handleConnectionData);
+                    socket.removeListener('error', handleRejoinError);
+                    localStorage.removeItem('gameContext');
+                    // Stop UIScene and GameScene if they were started
+                    if (game.scene.isActive('UIScene')) {
+                        game.scene.stop('UIScene');
+                    }
+                    if (game.scene.isActive('GameScene')) {
+                        game.scene.stop('GameScene');
+                    }
+                    game.scene.start('LobbyScene', { socket: socket });
+                }
+            }, 5000);
+        } catch (e) {
+            console.error('Error parsing game context:', e);
+            localStorage.removeItem('gameContext');
+            game.scene.start('LobbyScene', { socket: socket });
+        }
+    } else {
+        // No game context, start with lobby
+        game.scene.start('LobbyScene', { socket: socket });
+    }
+});

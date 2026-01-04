@@ -40,6 +40,70 @@ io.on('connection', (socket) => {
     
     socket.emit('lobbyData', { availableGames });
 
+    socket.on('getLobbyData', () => {
+        const availableGames = Array.from(games.values())
+            .filter(g => g.status === 'waiting')
+            .map(g => ({
+                gameId: g.gameId,
+                name: g.config.gameName,
+                playerCount: g.game.players.length,
+                maxPlayers: g.config.maxPlayers,
+                movementTiles: g.config.movementTiles,
+                asteroidBelts: g.config.asteroidBelts
+            }));
+        
+        socket.emit('lobbyData', { availableGames });
+    });
+
+    socket.on('rejoinGame', (data) => {
+        const gameId = data.gameId;
+        const playerName = data.playerName;
+        
+        console.log(`Player ${socket.id} attempting to rejoin game ${gameId} as ${playerName}`);
+        
+        if (!games.has(gameId)) {
+            socket.emit('error', 'Game not found');
+            return;
+        }
+        
+        const gameData = games.get(gameId);
+        
+        // Find player by name in the game
+        const player = gameData.game.players.find(p => p.name === playerName);
+        
+        if (!player) {
+            console.log(`Player ${playerName} not found in game ${gameId}`);
+            socket.emit('error', 'Player not found in game');
+            return;
+        }
+        
+        console.log(`Player ${playerName} successfully rejoined game ${gameId}`);
+        
+        // Update the player's socket ID (they have a new one after refresh)
+        player.id = socket.id;
+        playerGameMap.set(socket.id, gameId);
+        
+        // Join the socket to the game room
+        socket.join(gameId);
+        
+        // Send connection data to the rejoining player
+        socket.emit('connectionData', {
+            id: socket.id,
+            gameId: gameId,
+            isHost: gameData.game.players[0].id === socket.id,
+            gameStarted: gameData.status === 'in-progress',
+            playerName: player.name,
+            boardState: {
+                tiles: gameData.game.board.tiles,
+                hub: gameData.game.board.hub,
+                gridScale: gameData.game.board.grid.scale
+            }
+        });
+        
+        // Broadcast updated player list to this game
+        io.to(gameId).emit('playersUpdate', gameData.game.players);
+    });
+
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
         const gameId = playerGameMap.get(socket.id);
@@ -61,7 +125,7 @@ io.on('connection', (socket) => {
 
     socket.on('createGame', (data) => {
         const gameId = generateGameId();
-        const gameInstance = new Game();
+        const gameInstance = new Game(data.movementTiles || 6);
         gameInstance.setup([]); // Initialize decks and markets
         
         const gameData = {
@@ -80,15 +144,16 @@ io.on('connection', (socket) => {
         
         games.set(gameId, gameData);
         
-        // Add the creator as the first player
+        // Add the creator as the first player with provided name
         const isHost = true;
-        const player = gameInstance.addPlayer(socket.id, `Player 1`);
+        const playerName = data.playerName || 'Player 1';
+        const player = gameInstance.addPlayer(socket.id, playerName);
         playerGameMap.set(socket.id, gameId);
         
         // Join the socket to a room with the game ID
         socket.join(gameId);
         
-        console.log(`Game created: ${gameId} by ${socket.id}`);
+        console.log(`Game created: ${gameId} by ${socket.id} (${playerName})`);
         
         // Send connection data to the creator
         socket.emit('connectionData', {
@@ -96,6 +161,7 @@ io.on('connection', (socket) => {
             gameId: gameId,
             isHost: isHost,
             gameStarted: false,
+            playerName: player.name,
             boardState: {
                 tiles: gameInstance.board.tiles,
                 hub: gameInstance.board.hub,
@@ -112,6 +178,7 @@ io.on('connection', (socket) => {
 
     socket.on('joinGame', (data) => {
         const gameId = data.gameId;
+        const playerName = data.playerName || 'Player';
         
         if (!games.has(gameId)) {
             socket.emit('error', 'Game not found');
@@ -130,15 +197,14 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Add player to game
-        const playerNumber = gameData.game.players.length + 1;
-        const player = gameData.game.addPlayer(socket.id, `Player ${playerNumber}`);
+        // Add player to game with provided name
+        const player = gameData.game.addPlayer(socket.id, playerName);
         playerGameMap.set(socket.id, gameId);
         
         // Join the socket to the game room
         socket.join(gameId);
         
-        console.log(`Player ${socket.id} joined game ${gameId}`);
+        console.log(`Player ${socket.id} (${playerName}) joined game ${gameId}`);
         
         // Send connection data to the joining player
         socket.emit('connectionData', {
@@ -146,6 +212,7 @@ io.on('connection', (socket) => {
             gameId: gameId,
             isHost: false,
             gameStarted: false,
+            playerName: player.name,
             boardState: {
                 tiles: gameData.game.board.tiles,
                 hub: gameData.game.board.hub,

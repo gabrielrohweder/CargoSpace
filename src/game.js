@@ -6,13 +6,14 @@ const Planet = require('./planet');
 const { TileType } = require('./tile');
 
 class Game {
-    constructor() {
-        this.board = new Board();
+    constructor(movementTiles = 6) {
+        this.board = new Board(movementTiles);
         this.players = [];
         this.cargoDeck = null;
         this.functionDeck = null;
         this.discardPile = new Deck();
         this.currentPlayer = null;
+        this.movementTiles = movementTiles;
         this.availableColors = ['#0000FF', '#00FF00', '#FFFF00', '#FF0000', '#FFA500', '#800080']; // Blue, Green, Yellow, Red, Orange, Purple
     }
 
