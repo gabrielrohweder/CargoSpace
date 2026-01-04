@@ -597,6 +597,7 @@ class GameScene extends Phaser.Scene {
         this.tileData = new Map();
         this.highlightedTiles = [];
         this.highlightMarkers = [];
+        this.waitingForMovementMarkers = false; // Flag for auto-showing movement markers
 
         // Launch UI Scene
         this.scene.launch('UIScene', { socket: this.socket });
@@ -639,19 +640,24 @@ class GameScene extends Phaser.Scene {
             this.players = players;
             this.renderShips(players);
             this.updateStartButton();
+            
+            // Check if we should auto-show movement markers after dice roll
+            if (this.waitingForMovementMarkers) {
+                const myPlayer = players.find(p => p.id === this.socket.id);
+                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship) {
+                    console.log('Auto-showing movement markers after playersUpdate');
+                    const { q, r, s } = myPlayer.ship.position;
+                    this.highlightReachableTiles(q, r, s, myPlayer.movesLeft);
+                    this.waitingForMovementMarkers = false;
+                }
+            }
         });
 
         this.socket.on('diceRolled', (data) => {
             // Auto-show movement markers when the current player rolls
             if (data.playerId === this.socket.id) {
-                // Wait a moment for playersUpdate to arrive and update movesLeft
-                setTimeout(() => {
-                    const myPlayer = this.players.find(p => p.id === this.socket.id);
-                    if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship) {
-                        const { q, r, s } = myPlayer.ship.position;
-                        this.highlightReachableTiles(q, r, s, myPlayer.movesLeft);
-                    }
-                }, 50);
+                console.log('Setting flag to show movement markers on next playersUpdate');
+                this.waitingForMovementMarkers = true;
             }
         });
 
@@ -1091,8 +1097,6 @@ class GameScene extends Phaser.Scene {
 
     getWorldPositionForSlot(q, r, s) {
         const scale = this.gridScale || 100;
-        const centerX = this.cameras.main.width / 2;
-        const centerY = this.cameras.main.height / 2;
         const offsetX = this.boardOffset ? this.boardOffset.x : 0;
         const offsetY = this.boardOffset ? this.boardOffset.y : 0;
 
@@ -1135,9 +1139,11 @@ class GameScene extends Phaser.Scene {
             }
         }
 
+        // Return world position (not screen position)
+        // The board is centered in the world, so we just need axial position + sub-triangle offset + board offset
         return {
-            x: Math.round(centerX + x + subX + offsetX),
-            y: Math.round(centerY + y + subY + offsetY)
+            x: Math.round(x + subX + offsetX),
+            y: Math.round(y + subY + offsetY)
         };
     }
 
