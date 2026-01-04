@@ -1149,7 +1149,9 @@ class GameScene extends Phaser.Scene {
 
     addHighlightMarker(q, r, s) {
         const { x, y } = this.getWorldPositionForSlot(q, r, s);
-        const marker = this.add.circle(x, y, 12, 0x808080, 0.6);
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        const marker = this.add.circle(centerX + x, centerY + y, 12, 0x808080, 0.6);
         marker.setStrokeStyle(2, 0xffffff, 0.3);
         marker.setDepth(2.5);
         this.highlightMarkers.push(marker);
