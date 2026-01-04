@@ -38,6 +38,14 @@ class Game {
                 if(card) player.depot.push(card);
             }
         }
+        
+        // Deal 2 function cards to each player
+        if (this.functionDeck) {
+            for(let i=0; i<2; i++) {
+                const card = this.functionDeck.draw();
+                if(card) player.functionCards.push(card);
+            }
+        }
     }
 
     start() {
