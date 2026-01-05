@@ -312,6 +312,25 @@ io.on('connection', (socket) => {
         io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
     });
 
+    socket.on('requestTargetFunctionCards', (data) => {
+        console.log('requestTargetFunctionCards received:', data);
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        
+        if (!game) return;
+        
+        const targetPlayer = game.players.find(p => p.id === data.targetId);
+        if (targetPlayer) {
+            // Send target player's function cards back to requester
+            socket.emit('targetFunctionCards', {
+                targetId: data.targetId,
+                targetName: targetPlayer.name,
+                functionCards: targetPlayer.functionCards,
+                rootCardIndex: data.rootCardIndex
+            });
+        }
+    });
+
     socket.on('playFunctionCard', (data) => {
         console.log('playFunctionCard received:', data);
         const gameId = playerToGame.get(socket.id);
@@ -321,6 +340,7 @@ io.on('connection', (socket) => {
         if (!game || !metadata) return;
         
         const player = game.players.find(p => p.id === socket.id);
+        const targetPlayer = data.targetId ? game.players.find(p => p.id === data.targetId) : null;
         
         // Check if it's this player's turn and they're in roll phase
         if (game.players[metadata.currentTurnIndex].id !== socket.id) {
@@ -335,23 +355,173 @@ io.on('connection', (socket) => {
         
         if (player && data.cardIndex >= 0 && data.cardIndex < player.functionCards.length) {
             const card = player.functionCards[data.cardIndex];
-            console.log(`Player ${player.name} played function card: ${card.name}`);
+            console.log(`Player ${player.name} played function card: ${card.name} on target: ${targetPlayer ? targetPlayer.name : 'none'}`);
             
-            // TODO: Implement function card effects
-            // For now, just remove the card from player's hand
+            // Implement function card effects
+            let effectMessage = '';
+            
+            switch (card.name) {
+                case 'Repair Bot':
+                    if (targetPlayer) {
+                        targetPlayer.cargo.forEach(c => c.locked = false);
+                        effectMessage = `Unlocked ${targetPlayer.name}'s cargo`;
+                    }
+                    break;
+                    
+                case 'Mishap':
+                    if (targetPlayer) {
+                        targetPlayer.cargo.forEach(c => c.locked = true);
+                        effectMessage = `Locked out ${targetPlayer.name}'s cargo`;
+                    }
+                    break;
+                    
+                case 'Rebound':
+                    if (targetPlayer && targetPlayer.ship) {
+                        targetPlayer.ship.position = { q: 0, r: 0, s: 0 };
+                        effectMessage = `${targetPlayer.name} returned to the hub`;
+                    }
+                    break;
+                    
+                case 'Recall':
+                    if (targetPlayer && targetPlayer.ship) {
+                        targetPlayer.ship.position = { q: 0, r: 0, s: 0 };
+                        // Fill empty cargo slots from depot
+                        while (targetPlayer.cargo.length < 3 && targetPlayer.depot.length > 0) {
+                            targetPlayer.cargo.push(targetPlayer.depot.shift());
+                        }
+                        effectMessage = `${targetPlayer.name} sent to Hub and cargo filled`;
+                    }
+                    break;
+                    
+                case 'Impulse':
+                    if (targetPlayer) {
+                        const cardCount = targetPlayer.functionCards.length;
+                        targetPlayer.functionCards = [];
+                        effectMessage = `${targetPlayer.name} shuffled ${cardCount} function cards back into deck`;
+                    }
+                    break;
+                    
+                case 'Expired license':
+                    if (targetPlayer) {
+                        const cargoCount = targetPlayer.cargo.length;
+                        targetPlayer.depot = targetPlayer.depot.concat(targetPlayer.cargo);
+                        targetPlayer.cargo = [];
+                        effectMessage = `${targetPlayer.name} put ${cargoCount} cargo cards at bottom of depot`;
+                    }
+                    break;
+                    
+                case 'Delivery':
+                    if (targetPlayer) {
+                        while (targetPlayer.cargo.length < 3 && targetPlayer.depot.length > 0) {
+                            targetPlayer.cargo.push(targetPlayer.depot.shift());
+                        }
+                        effectMessage = `${targetPlayer.name} filled cargo from depot`;
+                    }
+                    break;
+                    
+                case 'Hijack':
+                    if (targetPlayer && targetPlayer.cargo.length > 0) {
+                        const stolenCard = targetPlayer.cargo.shift();
+                        player.cargo.push(stolenCard);
+                        targetPlayer.cargo.forEach(c => c.locked = true);
+                        effectMessage = `Stole cargo from ${targetPlayer.name} and locked their remaining cargo`;
+                    }
+                    break;
+                    
+                case 'Upload':
+                    if (targetPlayer && player.cargo.length > 0) {
+                        const uploadedCard = player.cargo.shift();
+                        targetPlayer.depot.push(uploadedCard);
+                        effectMessage = `Uploaded cargo to ${targetPlayer.name}'s depot`;
+                    }
+                    break;
+                    
+                case 'Jettison':
+                    if (targetPlayer && targetPlayer.cargo.length > 0) {
+                        targetPlayer.cargo.shift();
+                        effectMessage = `${targetPlayer.name} jettisoned a cargo card`;
+                    }
+                    break;
+                    
+                case 'Breakdown':
+                    if (targetPlayer) {
+                        targetPlayer.skipNextTurn = true;
+                        effectMessage = `${targetPlayer.name} will skip their next turn`;
+                    }
+                    break;
+                    
+                case 'I.D. Fraud':
+                    if (targetPlayer) {
+                        while (targetPlayer.cargo.length < 3 && player.depot.length > 0) {
+                            targetPlayer.cargo.push(player.depot.shift());
+                        }
+                        effectMessage = `${targetPlayer.name} loaded cargo from your depot`;
+                    }
+                    break;
+                    
+                case 'Warp':
+                    // Implement when planet system is ready
+                    effectMessage = 'Warp effect not yet implemented';
+                    break;
+                    
+                case 'Jump':
+                    // Implement when planet system is ready
+                    effectMessage = 'Jump effect not yet implemented';
+                    break;
+                    
+                case 'Stealth':
+                    player.movesLeft = 4;
+                    player.stealth = true;
+                    effectMessage = 'Move 4 spaces without obstruction';
+                    break;
+                    
+                case 'Glitch':
+                    if (game.functionDeck && game.functionDeck.cards.length > 0) {
+                        const newCard = game.functionDeck.draw();
+                        if (newCard) player.functionCards.push(newCard);
+                    }
+                    player.movesLeft = 10;
+                    effectMessage = 'Drew a function card and gained 10 moves';
+                    break;
+                    
+                case 'EMP':
+                    game.players.forEach(p => {
+                        p.functionCards = [];
+                    });
+                    effectMessage = 'All players shuffled function cards back into deck';
+                    break;
+                    
+                case 'Jammer':
+                    game.players.forEach(p => {
+                        if (p.cargo.length > 0) {
+                            p.cargo[0].locked = true;
+                        }
+                    });
+                    effectMessage = 'Locked one cargo for each player';
+                    break;
+                    
+                default:
+                    effectMessage = `${card.name} effect not yet implemented`;
+                    break;
+            }
+            
+            // Remove the card from player's hand
             player.functionCards.splice(data.cardIndex, 1);
             
             io.to(gameId).emit('playersUpdate', game.players);
             io.to(gameId).emit('functionCardPlayed', { 
                 playerId: socket.id, 
                 playerName: player.name,
-                cardName: card.name 
+                cardName: card.name,
+                effectMessage: effectMessage
             });
             
-            // Advance to move phase
-            metadata.turnPhase = 'move';
-            console.log('Phase changed to move after function card');
-            io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
+            // Advance to move phase (unless card gives moves directly)
+            if (card.name !== 'Stealth' && card.name !== 'Glitch') {
+                metadata.turnPhase = 'move';
+                console.log('Phase changed to move after function card');
+                io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
+            }
         } else {
             console.log('Invalid card index or no player found. Player:', !!player, 'cardIndex:', data.cardIndex, 'hand size:', player ? player.functionCards.length : 0);
         }

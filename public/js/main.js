@@ -468,6 +468,11 @@ class UIScene extends Phaser.Scene {
             }, 100);
         });
 
+        this.socket.on('targetFunctionCards', (data) => {
+            console.log('Received target function cards:', data);
+            this.showRootCardSelectionPopup(data);
+        });
+
         this.scale.on('resize', this.resize, this);
     }
 
@@ -715,7 +720,7 @@ class UIScene extends Phaser.Scene {
             const cardX = currentX + (cardWidth / 2) + (index * (cardWidth + spacing));
             const cardY = centerY + 20;
             
-            const cardRect = this.add.rectangle(cardX, cardY, cardWidth, cardHeight, 0xAA00AA);
+            const cardRect = this.add.rectangle(cardX, cardY, cardWidth, cardHeight, 0xAA00AA).setInteractive();
             cardRect.setStrokeStyle(2, 0x000000);
             this.currentPlayerGroup.add(cardRect);
 
@@ -725,6 +730,31 @@ class UIScene extends Phaser.Scene {
                 wordWrap: { width: 90 }
             });
             this.currentPlayerGroup.add(nameText);
+            
+            // Add hover tooltip for card description
+            let tooltip = null;
+            cardRect.on('pointerover', () => {
+                if (card.description) {
+                    tooltip = this.add.container(cardX, cardY - cardHeight / 2 - 10);
+                    const tooltipBg = this.add.rectangle(0, -40, cardWidth + 20, 80, 0x000000, 0.9);
+                    tooltipBg.setStrokeStyle(2, 0xffffff);
+                    const tooltipText = this.add.text(0, -40, card.description, {
+                        font: '11px Arial',
+                        fill: '#ffffff',
+                        wordWrap: { width: cardWidth + 10 },
+                        align: 'center'
+                    }).setOrigin(0.5);
+                    tooltip.add([tooltipBg, tooltipText]);
+                    tooltip.setDepth(3000);
+                    this.currentPlayerGroup.add(tooltip);
+                }
+            });
+            cardRect.on('pointerout', () => {
+                if (tooltip) {
+                    tooltip.destroy();
+                    tooltip = null;
+                }
+            });
         });
 
         // Moves Text (Right side of bottom panel)
@@ -908,35 +938,65 @@ class UIScene extends Phaser.Scene {
                     align: 'center'
                 }).setOrigin(0.5);
                 
+                // Add hover tooltip for card description
+                let tooltip = null;
+                cardRect.on('pointerover', () => {
+                    cardRect.fillColor = 0xCC00CC;
+                    if (card.description) {
+                        tooltip = this.add.container(cardX, cardY + cardHeight / 2 + 10);
+                        const tooltipBg = this.add.rectangle(0, 40, cardWidth + 20, 80, 0x000000, 0.9);
+                        tooltipBg.setStrokeStyle(2, 0xffffff);
+                        const tooltipText = this.add.text(0, 40, card.description, {
+                            font: '11px Arial',
+                            fill: '#ffffff',
+                            wordWrap: { width: cardWidth + 10 },
+                            align: 'center'
+                        }).setOrigin(0.5);
+                        tooltip.add([tooltipBg, tooltipText]);
+                        tooltip.setDepth(6000);
+                    }
+                });
+                cardRect.on('pointerout', () => {
+                    cardRect.fillColor = 0xAA00AA;
+                    if (tooltip) {
+                        tooltip.destroy();
+                        tooltip = null;
+                    }
+                });
+                
                 cardRect.on('pointerdown', () => {
-                    console.log('Function card clicked:', card.name, 'index:', index, 'popup exists:', !!this.turnPopup);
+                    console.log('Function card clicked:', card.name, 'index:', index, 'requires target:', card.requiresTarget);
                     // Disable the card immediately to prevent double-clicks
                     cardRect.setInteractive(false);
-                    if (this.turnPopup) {
-                        console.log('Attempting to destroy popup');
-                        // Make popup invisible immediately
-                        this.turnPopup.setVisible(false);
-                        try {
-                            // Manually destroy all children
-                            if (this.turnPopup.list) {
-                                this.turnPopup.list.forEach(child => {
-                                    try {
-                                        child.destroy();
-                                    } catch (e) {
-                                        console.warn('Error destroying child:', e);
-                                    }
-                                });
-                            }
-                            this.turnPopup.destroy();
-                            console.log('Popup and all children destroyed successfully');
-                        } catch (e) {
-                            console.error('Error destroying popup:', e);
-                        }
-                        this.turnPopup = null;
+                    
+                    // Check if this card requires a target
+                    if (card.requiresTarget) {
+                        // Show player selection dialog
+                        this.showPlayerSelectionDialog(card, index);
                     } else {
-                        console.warn('turnPopup was null when trying to destroy');
+                        // Play the card immediately without target
+                        if (this.turnPopup) {
+                            console.log('Attempting to destroy popup');
+                            this.turnPopup.setVisible(false);
+                            try {
+                                if (this.turnPopup.list) {
+                                    this.turnPopup.list.forEach(child => {
+                                        try {
+                                            child.destroy();
+                                        } catch (e) {
+                                            console.warn('Error destroying child:', e);
+                                        }
+                                    });
+                                }
+                                this.turnPopup.destroy();
+                                console.log('Popup and all children destroyed successfully');
+                            } catch (e) {
+                                console.error('Error destroying popup:', e);
+                            }
+                            this.turnPopup = null;
+                        }
+                        this.socket.emit('playFunctionCard', { cardIndex: index, targetId: null });
                     }
-                    this.socket.emit('playFunctionCard', { cardIndex: index });
                 });
                 
                 cardRect.on('pointerover', () => cardRect.fillColor = 0xCC00CC);
@@ -947,6 +1007,130 @@ class UIScene extends Phaser.Scene {
         }
         
         this.turnPopup.add(elements);
+    }
+
+    showPlayerSelectionDialog(card, cardIndex) {
+        // Close the turn popup first
+        if (this.turnPopup) {
+            this.turnPopup.setVisible(false);
+            try {
+                if (this.turnPopup.list) {
+                    this.turnPopup.list.forEach(child => {
+                        try {
+                            child.destroy();
+                        } catch (e) {
+                            console.warn('Error destroying child:', e);
+                        }
+                    });
+                }
+                this.turnPopup.destroy();
+            } catch (e) {
+                console.error('Error destroying popup:', e);
+            }
+            this.turnPopup = null;
+        }
+        
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        this.playerSelectionPopup = this.add.container(centerX, centerY);
+        
+        const bg = this.add.rectangle(0, 0, 500, 400, 0x000000, 0.9);
+        bg.setStrokeStyle(4, 0xffffff);
+        
+        const titleText = this.add.text(0, -160, `Playing: ${card.name}`, {
+            font: 'bold 28px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        const descText = this.add.text(0, -120, card.description, {
+            font: '16px Arial',
+            fill: '#aaaaaa',
+            wordWrap: { width: 450 },
+            align: 'center'
+        }).setOrigin(0.5);
+        
+        const selectText = this.add.text(0, -60, 'Select Target Player:', {
+            font: 'bold 20px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText, descText, selectText];
+        
+        // Get all players from gameScene
+        const gameScene = this.scene.get('GameScene');
+        const players = gameScene ? gameScene.players : [];
+        
+        // Display player buttons
+        const buttonWidth = 200;
+        const buttonHeight = 50;
+        const startY = -20;
+        const spacing = 10;
+        
+        players.forEach((player, index) => {
+            const btnY = startY + index * (buttonHeight + spacing);
+            const isMe = player.id === this.socket.id;
+            const btnColor = isMe ? 0x4444AA : 0x444444;
+            
+            const playerBtn = this.add.rectangle(0, btnY, buttonWidth, buttonHeight, btnColor).setInteractive();
+            playerBtn.setStrokeStyle(2, 0xffffff);
+            
+            const playerText = this.add.text(0, btnY, `${player.name}${isMe ? ' (You)' : ''}`, {
+                font: '18px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+            playerBtn.on('pointerdown', () => {
+                console.log('Target player selected:', player.name, player.id);
+                // Close the player selection popup
+                if (this.playerSelectionPopup) {
+                    this.playerSelectionPopup.destroy();
+                    this.playerSelectionPopup = null;
+                }
+                
+                // Special handling for Root card
+                if (card.name === 'Root') {
+                    // Request target player's function cards
+                    this.socket.emit('requestTargetFunctionCards', { 
+                        targetId: player.id,
+                        rootCardIndex: cardIndex 
+                    });
+                } else {
+                    // Play the card with the selected target
+                    this.socket.emit('playFunctionCard', { cardIndex: cardIndex, targetId: player.id });
+                }
+            });
+            
+            playerBtn.on('pointerover', () => playerBtn.fillColor = isMe ? 0x6666CC : 0x666666);
+            playerBtn.on('pointerout', () => playerBtn.fillColor = btnColor);
+            
+            elements.push(playerBtn, playerText);
+        });
+        
+        // Add cancel button
+        const cancelBtn = this.add.rectangle(0, startY + players.length * (buttonHeight + spacing) + 20, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, startY + players.length * (buttonHeight + spacing) + 20, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.playerSelectionPopup) {
+                this.playerSelectionPopup.destroy();
+                this.playerSelectionPopup = null;
+            }
+            // Re-show the turn popup
+            this.showYourTurnPopup();
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.playerSelectionPopup.add(elements);
+        this.playerSelectionPopup.setDepth(6000);
     }
 
     showTurnIndicator(playerName) {
@@ -1056,6 +1240,12 @@ class UIScene extends Phaser.Scene {
     }
 
     showWaitingMessage() {
+        console.log('UIScene.showWaitingMessage called, waitingText already exists:', !!this.waitingText);
+        // Don't create multiple waiting messages
+        if (this.waitingText) {
+            console.log('Waiting message already exists, not creating another');
+            return;
+        }
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
 
@@ -1063,14 +1253,237 @@ class UIScene extends Phaser.Scene {
             font: '32px Arial',
             fill: '#ffffff',
             fontStyle: 'bold'
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(5000);
+        console.log('Waiting message created');
     }
 
     hideWaitingMessage() {
+        console.log('UIScene.hideWaitingMessage called, waitingText exists:', !!this.waitingText);
         if (this.waitingText) {
-            this.waitingText.destroy();
+            try {
+                this.waitingText.destroy();
+            } catch (e) {
+                console.error('Error destroying waiting text:', e);
+            }
             this.waitingText = null;
         }
+    }
+
+    showRootCardSelectionPopup(data) {
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        this.playerSelectionPopup = this.add.container(centerX, centerY);
+        
+        const bg = this.add.rectangle(0, 0, 600, 500, 0x000000, 0.95);
+        bg.setStrokeStyle(4, 0xffaa00);
+        
+        const titleText = this.add.text(0, -220, `Root: ${data.targetName}'s Function Cards`, {
+            font: 'bold 28px Arial',
+            fill: '#ffaa00'
+        }).setOrigin(0.5);
+        
+        const instructionText = this.add.text(0, -180, 'Select a card to play from their hand:', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText, instructionText];
+        
+        // Display function cards
+        if (data.functionCards.length === 0) {
+            const noCardsText = this.add.text(0, -100, 'Target has no function cards', {
+                font: '20px Arial',
+                fill: '#ff6666'
+            }).setOrigin(0.5);
+            elements.push(noCardsText);
+        } else {
+            const cardWidth = 250;
+            const cardHeight = 80;
+            const startY = -120;
+            const spacing = 10;
+            
+            data.functionCards.forEach((card, index) => {
+                const cardY = startY + index * (cardHeight + spacing);
+                
+                const cardRect = this.add.rectangle(0, cardY, cardWidth, cardHeight, 0x2a2a2a).setInteractive();
+                cardRect.setStrokeStyle(3, 0x888888);
+                
+                const nameText = this.add.text(0, cardY - 20, card.name, {
+                    font: 'bold 20px Arial',
+                    fill: '#ffffff'
+                }).setOrigin(0.5);
+                
+                const descText = this.add.text(0, cardY + 15, card.description, {
+                    font: '14px Arial',
+                    fill: '#cccccc',
+                    wordWrap: { width: cardWidth - 20 },
+                    align: 'center'
+                }).setOrigin(0.5);
+                
+                cardRect.on('pointerdown', () => {
+                    console.log('Selected card from target:', card.name, 'at index', index);
+                    
+                    // Close popup
+                    if (this.playerSelectionPopup) {
+                        this.playerSelectionPopup.destroy();
+                        this.playerSelectionPopup = null;
+                    }
+                    
+                    // Check if the selected card requires a target
+                    if (card.requiresTarget) {
+                        // Show player selection for the selected card
+                        this.showPlayerSelectionForRootCard(data, index, card);
+                    } else {
+                        // Play the card directly
+                        this.socket.emit('playFunctionCard', {
+                            cardIndex: data.rootCardIndex,
+                            targetId: {
+                                targetPlayerId: data.targetId,
+                                selectedCardIndex: index,
+                                cardTarget: null
+                            }
+                        });
+                    }
+                });
+                
+                cardRect.on('pointerover', () => {
+                    cardRect.fillColor = 0x3a3a3a;
+                    cardRect.setStrokeStyle(3, 0xffaa00);
+                });
+                cardRect.on('pointerout', () => {
+                    cardRect.fillColor = 0x2a2a2a;
+                    cardRect.setStrokeStyle(3, 0x888888);
+                });
+                
+                elements.push(cardRect, nameText, descText);
+            });
+        }
+        
+        // Add cancel button
+        const cancelBtn = this.add.rectangle(0, 200, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, 200, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.playerSelectionPopup) {
+                this.playerSelectionPopup.destroy();
+                this.playerSelectionPopup = null;
+            }
+            this.showYourTurnPopup();
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.playerSelectionPopup.add(elements);
+        this.playerSelectionPopup.setDepth(6000);
+    }
+
+    showPlayerSelectionForRootCard(rootData, selectedCardIndex, selectedCard) {
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        this.playerSelectionPopup = this.add.container(centerX, centerY);
+        
+        const bg = this.add.rectangle(0, 0, 500, 400, 0x000000, 0.9);
+        bg.setStrokeStyle(4, 0xffffff);
+        
+        const titleText = this.add.text(0, -160, `Playing: ${selectedCard.name}`, {
+            font: 'bold 28px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        const descText = this.add.text(0, -120, selectedCard.description, {
+            font: '16px Arial',
+            fill: '#aaaaaa',
+            wordWrap: { width: 450 },
+            align: 'center'
+        }).setOrigin(0.5);
+        
+        const selectText = this.add.text(0, -60, 'Select Target Player:', {
+            font: 'bold 20px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText, descText, selectText];
+        
+        // Get all players from gameScene
+        const gameScene = this.scene.get('GameScene');
+        const players = gameScene ? gameScene.players : [];
+        
+        const buttonWidth = 200;
+        const buttonHeight = 50;
+        const startY = -20;
+        const spacing = 10;
+        
+        players.forEach((player, index) => {
+            const btnY = startY + index * (buttonHeight + spacing);
+            const isMe = player.id === this.socket.id;
+            const btnColor = isMe ? 0x4444AA : 0x444444;
+            
+            const playerBtn = this.add.rectangle(0, btnY, buttonWidth, buttonHeight, btnColor).setInteractive();
+            playerBtn.setStrokeStyle(2, 0xffffff);
+            
+            const playerText = this.add.text(0, btnY, `${player.name}${isMe ? ' (You)' : ''}`, {
+                font: '18px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+            playerBtn.on('pointerdown', () => {
+                console.log('Target player selected for rooted card:', player.name, player.id);
+                
+                if (this.playerSelectionPopup) {
+                    this.playerSelectionPopup.destroy();
+                    this.playerSelectionPopup = null;
+                }
+                
+                // Play the rooted card with this target
+                this.socket.emit('playFunctionCard', {
+                    cardIndex: rootData.rootCardIndex,
+                    targetId: {
+                        targetPlayerId: rootData.targetId,
+                        selectedCardIndex: selectedCardIndex,
+                        cardTarget: player.id
+                    }
+                });
+            });
+            
+            playerBtn.on('pointerover', () => playerBtn.fillColor = isMe ? 0x6666CC : 0x666666);
+            playerBtn.on('pointerout', () => playerBtn.fillColor = btnColor);
+            
+            elements.push(playerBtn, playerText);
+        });
+        
+        // Add cancel button
+        const cancelBtn = this.add.rectangle(0, startY + players.length * (buttonHeight + spacing) + 20, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, startY + players.length * (buttonHeight + spacing) + 20, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.playerSelectionPopup) {
+                this.playerSelectionPopup.destroy();
+                this.playerSelectionPopup = null;
+            }
+            // Go back to showing target's cards
+            this.showRootCardSelectionPopup(rootData);
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.playerSelectionPopup.add(elements);
+        this.playerSelectionPopup.setDepth(6000);
     }
 }
 
@@ -1238,7 +1651,24 @@ class GameScene extends Phaser.Scene {
         }));
         
         if (this.gameStarted) {
-            this.renderBoard(data.boardState);
+            // Game already started - hide waiting message and show board
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene && uiScene.scene.isActive()) {
+                uiScene.hideWaitingMessage();
+                uiScene.hideStartButton();
+            } else {
+                // Retry if UIScene not ready
+                this.time.delayedCall(100, () => {
+                    const uiScene = this.scene.get('UIScene');
+                    if (uiScene) {
+                        uiScene.hideWaitingMessage();
+                        uiScene.hideStartButton();
+                    }
+                });
+            }
+            if (data.boardState && data.boardState.tiles) {
+                this.renderBoard(data.boardState);
+            }
         } else if (this.isHost) {
             console.log('GameScene: Signaling UIScene to show start button');
             const uiScene = this.scene.get('UIScene');
@@ -1666,9 +2096,9 @@ class GameScene extends Phaser.Scene {
 
     addHighlightMarker(q, r, s) {
         const { x, y } = this.getWorldPositionForSlot(q, r, s);
-        const centerX = this.cameras.main.width / 2;
-        const centerY = this.cameras.main.height / 2;
-        const marker = this.add.circle(centerX + x, centerY + y, 12, 0x808080, 0.6);
+        // getWorldPositionForSlot already returns world coordinates (including boardOffset)
+        // so we don't need to add centerX/centerY again
+        const marker = this.add.circle(x, y, 12, 0x808080, 0.6);
         marker.setStrokeStyle(2, 0xffffff, 0.3);
         marker.setDepth(2.5);
         this.highlightMarkers.push(marker);

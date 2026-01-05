@@ -103,19 +103,42 @@ class Game {
         this.cargoDeck = new Deck(cargoCards);
         this.cargoDeck.shuffle();
 
-        // Create function cards
+        // Create function cards with descriptions
         const functionCards = [];
         const functionCardData = {
-            'Repair Bot': 6, 'Mishap': 2, 'Rebound': 2, 'Market Shift': 2, 'Hijack': 2,
-            'Upload': 2, 'Impulse': 2, 'Expired license': 2, 'Market Regulation': 2,
-            'Free Port': 2, 'Hinder': 2, 'Recall': 2, 'Jammer': 2, 'Jettison': 2,
-            'Delivery': 2, 'Warp': 2, 'Stealth': 2, 'Data Switch': 2, 'Jump': 2,
-            'Glitch': 2, 'I.D. Fraud': 1, 'Replicator': 1, 'Breakdown': 1, 'Root': 1, 'EMP': 1
+            'Repair Bot': { count: 6, description: 'Unlock target player\'s cargo', requiresTarget: true },
+            'Mishap': { count: 2, description: 'Lockout target player\'s cargo', requiresTarget: true },
+            'Rebound': { count: 2, description: 'Target player returns to the hub', requiresTarget: true },
+            'Market Shift': { count: 2, description: 'Change the market of any one planet by putting the top discard pile card on that planet\'s market', requiresTarget: false },
+            'Hijack': { count: 2, description: 'You take a cargo card from a player and that player must lock out their remaining cargo', requiresTarget: true },
+            'Upload': { count: 2, description: 'Place one of your cargo cards onto another player\'s depot', requiresTarget: true },
+            'Impulse': { count: 2, description: 'Target player must shuffle all of their function cards back into the deck', requiresTarget: true },
+            'Expired license': { count: 2, description: 'Target player must put all their cargo cards at the bottom of their depot', requiresTarget: true },
+            'Market Regulation': { count: 2, description: 'Switch any two planetary markets with each other', requiresTarget: false },
+            'Free Port': { count: 2, description: 'Play any one cargo card on your current Planet if it is open', requiresTarget: false },
+            'Hinder': { count: 2, description: 'Place the black hole where you choose', requiresTarget: false },
+            'Recall': { count: 2, description: 'Send any player to the Hub. They must fill all empty cargo slots and cannot draw a Function card', requiresTarget: true },
+            'Jammer': { count: 2, description: 'Choose one cargo unit for each player to lock down, including yourself', requiresTarget: false },
+            'Jettison': { count: 2, description: 'Target player shuffles one cargo card of your choice into the Discard deck', requiresTarget: true },
+            'Delivery': { count: 2, description: 'Target player fills their cargo slots from their depot', requiresTarget: true },
+            'Warp': { count: 2, description: 'Target player moves to a random planet', requiresTarget: true },
+            'Stealth': { count: 2, description: 'Move four spaces. Nothing can block your movement (No asteroids, players or black holes can block movement)', requiresTarget: false },
+            'Data Switch': { count: 2, description: 'Switch one cargo card belonging to any player for another player\'s cargo card', requiresTarget: false },
+            'Jump': { count: 2, description: 'Target player jumps to any planet of card player\'s choice', requiresTarget: true },
+            'Glitch': { count: 2, description: 'Draw a new function card. Move your ship any number of spaces, up to 10', requiresTarget: false },
+            'I.D. Fraud': { count: 1, description: 'Target player loads their open cargo slots from your depot', requiresTarget: true },
+            'Replicator': { count: 1, description: 'Reveal one of your function cards to all players. Play replicator as if it were that card', requiresTarget: false },
+            'Breakdown': { count: 1, description: 'Target player skips their next turn', requiresTarget: true },
+            'Root': { count: 1, description: 'Look at target player\'s function cards. You must play one of those cards as your own', requiresTarget: true },
+            'EMP': { count: 1, description: 'All players shuffle their function cards back into the deck. Including you', requiresTarget: false }
         };
 
         for (const name in functionCardData) {
-            for (let i = 0; i < functionCardData[name]; i++) {
-                functionCards.push(new FunctionCard(name, ''));
+            const { count, description, requiresTarget } = functionCardData[name];
+            for (let i = 0; i < count; i++) {
+                const card = new FunctionCard(name, description);
+                card.requiresTarget = requiresTarget;
+                functionCards.push(card);
             }
         }
 
@@ -454,6 +477,22 @@ class Game {
                     this.functionDeck.shuffle();
                     this.currentPlayer.functionCards.splice(cardIndex, 1);
                     return true;
+                case 'Root':
+                    // Root card is handled separately - first show target's cards, then play selected card
+                    // targetId should contain: { targetPlayerId, selectedCardIndex }
+                    if (targetId && targetId.selectedCardIndex !== undefined) {
+                        const targetPlayerRoot = this.players.find(p => p.id === targetId.targetPlayerId);
+                        if (targetPlayerRoot && targetPlayerRoot.functionCards[targetId.selectedCardIndex]) {
+                            // Play the selected card from target's hand as if current player played it
+                            const success = this.playFunctionCard(targetId.selectedCardIndex, targetId.cardTarget);
+                            if (success) {
+                                // Remove the Root card from current player's hand
+                                this.currentPlayer.functionCards.splice(cardIndex, 1);
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
                 default:
                     return false;
             }
