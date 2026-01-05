@@ -455,6 +455,10 @@ class UIScene extends Phaser.Scene {
         });
 
         this.socket.on('gameStarted', () => {
+            // Hide start button and waiting message when game starts
+            this.hideStartButton();
+            this.hideWaitingMessage();
+            
             // Give a moment for everything to initialize, then check if popup needed
             setTimeout(() => {
                 if (this.currentTurnPlayerId === this.socket.id && this.turnPhase === 'roll') {
@@ -969,6 +973,13 @@ class UIScene extends Phaser.Scene {
     showStartButton(socket) {
         console.log('UIScene.showStartButton called with socket:', socket ? socket.id : 'NO SOCKET');
         console.log('UIScene.this.socket:', this.socket ? this.socket.id : 'NO SOCKET');
+        
+        // Don't show button if it already exists
+        if (this.startButton) {
+            console.log('Start button already exists, skipping creation');
+            return;
+        }
+        
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
 
@@ -992,6 +1003,8 @@ class UIScene extends Phaser.Scene {
             if (this.startButton.alpha === 1) {
                 console.log('Start Game button clicked, emitting startGame to socket:', this.socket ? this.socket.id : 'NO SOCKET');
                 this.socket.emit('startGame');
+                // Immediately hide the button to prevent multiple clicks
+                this.hideStartButton();
             } else {
                 console.log('Button disabled (alpha=' + this.startButton.alpha + ')');
             }
@@ -1008,6 +1021,10 @@ class UIScene extends Phaser.Scene {
     }
 
     updateStartButton(players) {
+        // Don't update if button doesn't exist or has been destroyed
+        if (!this.startButton) {
+            return;
+        }
         if (this.startButton && this.startButton.active) {
             const canStart = !players || players.length >= 1;
             // Check if children exist
@@ -1029,8 +1046,11 @@ class UIScene extends Phaser.Scene {
     }
 
     hideStartButton() {
+        console.log('hideStartButton called, startButton exists:', !!this.startButton);
         if (this.startButton) {
-            this.startButton.destroy();
+            console.log('Destroying start button');
+            this.startButton.setVisible(false);
+            this.startButton.destroy(true);
             this.startButton = null;
         }
     }
@@ -1147,7 +1167,8 @@ class GameScene extends Phaser.Scene {
             this.players = players;
             this.renderShips(players);
             const uiScene = this.scene.get('UIScene');
-            if (uiScene) {
+            // Only update start button if game hasn't started yet
+            if (uiScene && !this.gameStarted) {
                 uiScene.updateStartButton(players);
             }
             
@@ -1191,10 +1212,13 @@ class GameScene extends Phaser.Scene {
             this.cameras.main.zoom = Phaser.Math.Clamp(newZoom, 0.1, 2);
         });
         
-        // If connectionData was passed from LobbyScene, handle it immediately
+        // If connectionData was passed from LobbyScene, handle it after UIScene is ready
         if (data && data.connectionData) {
             console.log('GameScene: Using connectionData passed from LobbyScene');
-            this.handleConnectionData(data.connectionData);
+            // Wait for UIScene to be ready before calling handleConnectionData
+            this.time.delayedCall(100, () => {
+                this.handleConnectionData(data.connectionData);
+            });
         }
     }
     
@@ -1218,14 +1242,30 @@ class GameScene extends Phaser.Scene {
         } else if (this.isHost) {
             console.log('GameScene: Signaling UIScene to show start button');
             const uiScene = this.scene.get('UIScene');
-            if (uiScene) {
+            if (uiScene && uiScene.scene.isActive()) {
                 uiScene.showStartButton(this.socket);
+            } else {
+                console.log('GameScene: UIScene not ready yet, retrying...');
+                this.time.delayedCall(100, () => {
+                    const uiScene = this.scene.get('UIScene');
+                    if (uiScene) {
+                        uiScene.showStartButton(this.socket);
+                    }
+                });
             }
         } else {
             console.log('GameScene: Signaling UIScene to show waiting message');
             const uiScene = this.scene.get('UIScene');
-            if (uiScene) {
+            if (uiScene && uiScene.scene.isActive()) {
                 uiScene.showWaitingMessage();
+            } else {
+                console.log('GameScene: UIScene not ready yet, retrying...');
+                this.time.delayedCall(100, () => {
+                    const uiScene = this.scene.get('UIScene');
+                    if (uiScene) {
+                        uiScene.showWaitingMessage();
+                    }
+                });
             }
         }
     }

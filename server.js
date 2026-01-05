@@ -11,346 +11,324 @@ const port = process.env.PORT || 3000;
 
 app.use(express.static('public'));
 
-// Store all games: gameId -> { game, status, config, players, turn info }
-const games = new Map();
-let nextGameId = 1;
+// Support multiple games
+const games = new Map(); // gameId -> game instance
+const gameMetadata = new Map(); // gameId -> { name, hostId, maxPlayers, movementTiles, asteroidBelts, playerCount }
+const playerToGame = new Map(); // socketId -> gameId
 
-// Helper to generate unique game IDs
 function generateGameId() {
-    return `game_${nextGameId++}`;
+    return 'game_' + Math.random().toString(36).substring(2, 15);
 }
 
-// Track which game each player is in
-const playerGameMap = new Map(); // playerId -> gameId
+function getAvailableGames() {
+    const availableGames = [];
+    for (const [gameId, metadata] of gameMetadata.entries()) {
+        const game = games.get(gameId);
+        if (game && !metadata.started) {
+            availableGames.push({
+                gameId: gameId,
+                name: metadata.name,
+                playerCount: game.players.length,
+                maxPlayers: metadata.maxPlayers,
+                movementTiles: metadata.movementTiles,
+                asteroidBelts: metadata.asteroidBelts
+            });
+        }
+    }
+    return availableGames;
+}
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Send list of available games to the new player
-    const availableGames = Array.from(games.values())
-        .filter(g => g.status === 'waiting')
-        .map(g => ({
-            gameId: g.gameId,
-            name: g.config.gameName,
-            playerCount: g.game.players.length,
-            maxPlayers: g.config.maxPlayers,
-            movementTiles: g.config.movementTiles,
-            asteroidBelts: g.config.asteroidBelts
-        }));
-    
-    socket.emit('lobbyData', { availableGames });
-
+    // Handle lobby data request
     socket.on('getLobbyData', () => {
-        const availableGames = Array.from(games.values())
-            .filter(g => g.status === 'waiting')
-            .map(g => ({
-                gameId: g.gameId,
-                name: g.config.gameName,
-                playerCount: g.game.players.length,
-                maxPlayers: g.config.maxPlayers,
-                movementTiles: g.config.movementTiles,
-                asteroidBelts: g.config.asteroidBelts
-            }));
-        
+        const availableGames = getAvailableGames();
         socket.emit('lobbyData', { availableGames });
     });
 
-    socket.on('rejoinGame', (data) => {
-        const gameId = data.gameId;
-        const playerName = data.playerName;
-        
-        console.log(`Player ${socket.id} attempting to rejoin game ${gameId} as ${playerName}`);
-        
-        if (!games.has(gameId)) {
-            socket.emit('error', 'Game not found');
-            return;
-        }
-        
-        const gameData = games.get(gameId);
-        
-        // Find player by name in the game
-        const player = gameData.game.players.find(p => p.name === playerName);
-        
-        if (!player) {
-            console.log(`Player ${playerName} not found in game ${gameId}`);
-            socket.emit('error', 'Player not found in game');
-            return;
-        }
-        
-        console.log(`Player ${playerName} successfully rejoined game ${gameId}`);
-        
-        // Update the player's socket ID (they have a new one after refresh)
-        player.id = socket.id;
-        playerGameMap.set(socket.id, gameId);
-        
-        // Join the socket to the game room
-        socket.join(gameId);
-        
-        // Send connection data to the rejoining player
-        socket.emit('connectionData', {
-            id: socket.id,
-            gameId: gameId,
-            isHost: gameData.game.players[0].id === socket.id,
-            gameStarted: gameData.status === 'in-progress',
-            playerName: player.name,
-            boardState: {
-                tiles: gameData.game.board.tiles,
-                hub: gameData.game.board.hub,
-                gridScale: gameData.game.board.grid.scale
-            }
-        });
-        
-        // Broadcast updated player list to this game
-        io.to(gameId).emit('playersUpdate', gameData.game.players);
-    });
-
-    socket.on('disconnect', () => {
-        console.log('A user disconnected:', socket.id);
-        const gameId = playerGameMap.get(socket.id);
-        if (gameId && games.has(gameId)) {
-            const gameData = games.get(gameId);
-            gameData.game.removePlayer(socket.id);
-            playerGameMap.delete(socket.id);
-            
-            // If game has no players, delete it
-            if (gameData.game.players.length === 0) {
-                games.delete(gameId);
-                console.log(`Game ${gameId} deleted (no players left)`);
-            } else {
-                // Notify remaining players
-                io.to(gameId).emit('playersUpdate', gameData.game.players);
-            }
-        }
-    });
-
+    // Handle game creation
     socket.on('createGame', (data) => {
+        console.log('Creating game:', data);
         const gameId = generateGameId();
-        const gameInstance = new Game(data.movementTiles || 6);
-        gameInstance.setup([]); // Initialize decks and markets
+        const game = new Game();
+        game.setup([]); // Initialize decks and markets
         
-        const gameData = {
-            gameId: gameId,
-            game: gameInstance,
-            status: 'waiting', // 'waiting', 'in-progress', 'finished'
-            config: {
-                gameName: data.gameName || gameId,
-                movementTiles: data.movementTiles || 6,
-                asteroidBelts: data.asteroidBelts || false,
-                maxPlayers: data.maxPlayers || 4
-            },
+        // Add creator as first player
+        const player = game.addPlayer(socket.id, data.playerName || 'Host');
+        
+        // Store game and metadata
+        games.set(gameId, game);
+        gameMetadata.set(gameId, {
+            name: data.gameName || 'Unnamed Game',
+            hostId: socket.id,
+            maxPlayers: data.maxPlayers || 4,
+            movementTiles: data.movementTiles || 6,
+            asteroidBelts: data.asteroidBelts || false,
+            started: false,
             currentTurnIndex: 0,
             turnPhase: 'roll'
-        };
+        });
         
-        games.set(gameId, gameData);
+        playerToGame.set(socket.id, gameId);
         
-        // Add the creator as the first player with provided name
-        const isHost = true;
-        const playerName = data.playerName || 'Player 1';
-        const player = gameInstance.addPlayer(socket.id, playerName);
-        playerGameMap.set(socket.id, gameId);
-        
-        // Join the socket to a room with the game ID
+        // Join socket room for this game
         socket.join(gameId);
         
-        console.log(`Game created: ${gameId} by ${socket.id} (${playerName})`);
-        
-        // Send connection data to the creator
+        // Send connection data to creator
         socket.emit('connectionData', {
             id: socket.id,
             gameId: gameId,
-            isHost: isHost,
+            isHost: true,
             gameStarted: false,
-            playerName: player.name,
+            playerName: data.playerName,
             boardState: {
-                tiles: gameInstance.board.tiles,
-                hub: gameInstance.board.hub,
-                gridScale: gameInstance.board.grid.scale
+                tiles: game.board.tiles,
+                hub: game.board.hub,
+                gridScale: game.board.grid.scale
             }
         });
         
-        // Broadcast updated player list to this game
-        io.to(gameId).emit('playersUpdate', gameInstance.players);
+        // Broadcast updated game list to lobby
+        io.emit('lobbyUpdate', { availableGames: getAvailableGames() });
         
-        // Update lobby for all players
-        broadcastLobbyUpdate();
+        // Send player list to game room
+        io.to(gameId).emit('playersUpdate', game.players);
     });
 
+    // Handle joining a game
     socket.on('joinGame', (data) => {
+        console.log('Player joining game:', data);
         const gameId = data.gameId;
-        const playerName = data.playerName || 'Player';
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
         
-        if (!games.has(gameId)) {
-            socket.emit('error', 'Game not found');
+        if (!game || !metadata) {
+            socket.emit('connectionError', 'Game not found.');
             return;
         }
         
-        const gameData = games.get(gameId);
-        
-        if (gameData.status !== 'waiting') {
-            socket.emit('error', 'Game has already started');
+        if (metadata.started) {
+            socket.emit('connectionError', 'Game has already started.');
             return;
         }
         
-        if (gameData.game.players.length >= gameData.config.maxPlayers) {
-            socket.emit('error', 'Game is full');
+        if (game.players.length >= metadata.maxPlayers) {
+            socket.emit('connectionError', 'Game is full.');
             return;
         }
         
-        // Add player to game with provided name
-        const player = gameData.game.addPlayer(socket.id, playerName);
-        playerGameMap.set(socket.id, gameId);
+        // Add player to game
+        const player = game.addPlayer(socket.id, data.playerName || `Player ${game.players.length}`);
+        playerToGame.set(socket.id, gameId);
         
-        // Join the socket to the game room
+        // Join socket room for this game
         socket.join(gameId);
         
-        console.log(`Player ${socket.id} (${playerName}) joined game ${gameId}`);
-        
-        // Send connection data to the joining player
+        // Send connection data to joining player
         socket.emit('connectionData', {
             id: socket.id,
             gameId: gameId,
             isHost: false,
             gameStarted: false,
-            playerName: player.name,
+            playerName: data.playerName,
             boardState: {
-                tiles: gameData.game.board.tiles,
-                hub: gameData.game.board.hub,
-                gridScale: gameData.game.board.grid.scale
+                tiles: game.board.tiles,
+                hub: game.board.hub,
+                gridScale: game.board.grid.scale
             }
         });
         
-        // Broadcast updated player list to this game
-        io.to(gameId).emit('playersUpdate', gameData.game.players);
+        // Broadcast updated game list to lobby
+        io.emit('lobbyUpdate', { availableGames: getAvailableGames() });
         
-        // Update lobby for all players
-        broadcastLobbyUpdate();
+        // Send updated player list to all players in game
+        io.to(gameId).emit('playersUpdate', game.players);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('A user disconnected:', socket.id);
+        const gameId = playerToGame.get(socket.id);
+        
+        if (gameId) {
+            const game = games.get(gameId);
+            const metadata = gameMetadata.get(gameId);
+            
+            if (game && metadata) {
+                game.removePlayer(socket.id);
+                
+                // If host leaves or no players left, remove the game
+                if (socket.id === metadata.hostId || game.players.length === 0) {
+                    games.delete(gameId);
+                    gameMetadata.delete(gameId);
+                    console.log(`Game ${gameId} removed (host left or empty)`);
+                } else {
+                    // Update remaining players
+                    io.to(gameId).emit('playersUpdate', game.players);
+                }
+                
+                playerToGame.delete(socket.id);
+                
+                // Broadcast updated game list to lobby
+                io.emit('lobbyUpdate', { availableGames: getAvailableGames() });
+            }
+        }
     });
 
     socket.on('click', (data) => {
-        const gameId = playerGameMap.get(socket.id);
+        const gameId = playerToGame.get(socket.id);
         if (gameId) {
             io.to(gameId).emit('newShape', data);
         }
     });
 
     socket.on('startGame', () => {
-        const gameId = playerGameMap.get(socket.id);
-        if (!gameId || !games.has(gameId)) {
-            socket.emit('error', 'Game not found');
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
+        
+        if (!game || !metadata) {
+            console.log('Game not found for startGame');
             return;
         }
         
-        const gameData = games.get(gameId);
-        if (gameData.status !== 'waiting') {
-            socket.emit('error', 'Game has already started');
+        // Only host can start the game
+        if (socket.id !== metadata.hostId) {
+            console.log('Only host can start the game. Rejected:', socket.id);
+            socket.emit('connectionError', 'Only the host can start the game.');
             return;
         }
         
-        // Only host can start the game (first player)
-        const isHost = gameData.game.players[0].id === socket.id;
-        if (!isHost) {
-            socket.emit('error', 'Only the host can start the game');
+        if (metadata.started) {
+            console.log('Game already started');
             return;
         }
         
-        console.log('Starting game:', gameId);
+        console.log('Starting game...');
         io.to(gameId).emit('debugMessage', 'Server: Starting game...');
         
         try {
-            gameData.game.start();
-            gameData.status = 'in-progress';
+            // Capture console.log from board generation
+            const originalLog = console.log;
+            console.log = function(...args) {
+                originalLog.apply(console, args);
+                io.to(gameId).emit('debugMessage', `Server Log: ${args.join(' ')}`);
+            };
             
-            const tileCount = gameData.game.board.tiles.length;
-            console.log(`Game ${gameId} started with ${tileCount} tiles and ${gameData.game.players.length} players.`);
+            console.log("TEST LOG CAPTURE - If you see this, logging works");
+
+            game.start();
+            
+            // Restore console.log
+            console.log = originalLog;
+
+            metadata.started = true;
+            
+            const tileCount = game.board.tiles.length;
+            console.log(`Game ${gameId} started with ${tileCount} tiles and ${game.players.length} players.`);
+            io.to(gameId).emit('debugMessage', `Server: Game started with ${tileCount} tiles.`);
             
             io.to(gameId).emit('gameStarted', {
-                tiles: gameData.game.board.tiles,
-                hub: gameData.game.board.hub,
-                gridScale: gameData.game.board.grid.scale
+                tiles: game.board.tiles,
+                hub: game.board.hub,
+                gridScale: game.board.grid.scale
             });
-            io.to(gameId).emit('playersUpdate', gameData.game.players);
+            io.to(gameId).emit('playersUpdate', game.players);
             
             // Start a random player's turn
-            gameData.currentTurnIndex = Math.floor(Math.random() * gameData.game.players.length);
-            gameData.turnPhase = 'roll';
-            
-            if (gameData.game.players.length > 0) {
+            metadata.currentTurnIndex = Math.floor(Math.random() * game.players.length);
+            metadata.turnPhase = 'roll';
+            if (game.players.length > 0) {
+                console.log(`Random starting player: ${game.players[metadata.currentTurnIndex].name} (index ${metadata.currentTurnIndex})`);
+                console.log(`Starting player ID: ${game.players[metadata.currentTurnIndex].id}`);
+                console.log('All player IDs:', game.players.map(p => ({ name: p.name, id: p.id })));
+                
                 const turnData = {
-                    currentPlayerId: gameData.game.players[gameData.currentTurnIndex].id,
-                    currentPlayerName: gameData.game.players[gameData.currentTurnIndex].name,
-                    turnIndex: gameData.currentTurnIndex,
-                    phase: gameData.turnPhase
+                    currentPlayerId: game.players[metadata.currentTurnIndex].id,
+                    currentPlayerName: game.players[metadata.currentTurnIndex].name,
+                    turnIndex: metadata.currentTurnIndex,
+                    phase: metadata.turnPhase
                 };
+                console.log('Emitting turnChanged:', turnData);
                 io.to(gameId).emit('turnChanged', turnData);
             }
+            
+            // Broadcast updated game list to lobby (game should now be hidden)
+            io.emit('lobbyUpdate', { availableGames: getAvailableGames() });
         } catch (error) {
             console.error("Error starting game:", error);
             io.to(gameId).emit('debugMessage', `Server Error: ${error.message}`);
         }
-        
-        // Update lobby for all players
-        broadcastLobbyUpdate();
     });
 
     socket.on('regenerateBoard', () => {
-        const gameId = playerGameMap.get(socket.id);
-        if (gameId && games.has(gameId)) {
-            const gameData = games.get(gameId);
-            console.log('Regenerating board for game:', gameId);
-            gameData.game.board.generate();
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
+        
+        if (!game || !metadata) return;
+        
+        // Only allow if game hasn't started yet
+        if (!metadata.started) {
+            console.log('Regenerating board...');
+            game.board.generate();
             io.to(gameId).emit('boardState', {
-                tiles: gameData.game.board.tiles,
-                hub: gameData.game.board.hub,
-                gridScale: gameData.game.board.grid.scale
+                tiles: game.board.tiles,
+                hub: game.board.hub,
+                gridScale: game.board.grid.scale
             });
         }
     });
 
     socket.on('rollDice', () => {
-        const gameId = playerGameMap.get(socket.id);
-        if (!gameId || !games.has(gameId)) return;
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
         
-        const gameData = games.get(gameId);
-        const player = gameData.game.players.find(p => p.id === socket.id);
+        if (!game || !metadata) return;
+        
+        const player = game.players.find(p => p.id === socket.id);
         
         // Check if it's this player's turn and they're in roll phase
-        if (gameData.game.players[gameData.currentTurnIndex].id !== socket.id) {
+        if (game.players[metadata.currentTurnIndex].id !== socket.id) {
             console.log('Not your turn!');
             return;
         }
         
-        if (gameData.turnPhase !== 'roll') {
+        if (metadata.turnPhase !== 'roll') {
             console.log('Not in roll phase!');
             return;
         }
         
-        const result = gameData.game.rollDice();
+        const result = game.rollDice();
         if (player) {
             player.movesLeft = result[0] + result[1];
         }
         io.to(gameId).emit('diceRolled', { playerId: socket.id, result: result });
-        io.to(gameId).emit('playersUpdate', gameData.game.players);
+        io.to(gameId).emit('playersUpdate', game.players);
         
         // Advance to move phase
-        gameData.turnPhase = 'move';
-        io.to(gameId).emit('phaseChanged', { phase: gameData.turnPhase });
+        metadata.turnPhase = 'move';
+        io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
     });
 
     socket.on('playFunctionCard', (data) => {
-        const gameId = playerGameMap.get(socket.id);
-        if (!gameId || !games.has(gameId)) return;
+        console.log('playFunctionCard received:', data);
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
         
-        const gameData = games.get(gameId);
-        const player = gameData.game.players.find(p => p.id === socket.id);
+        if (!game || !metadata) return;
+        
+        const player = game.players.find(p => p.id === socket.id);
         
         // Check if it's this player's turn and they're in roll phase
-        if (gameData.game.players[gameData.currentTurnIndex].id !== socket.id) {
+        if (game.players[metadata.currentTurnIndex].id !== socket.id) {
             console.log('Not your turn!');
             return;
         }
         
-        if (gameData.turnPhase !== 'roll') {
+        if (metadata.turnPhase !== 'roll') {
             console.log('Not in roll phase!');
             return;
         }
@@ -360,9 +338,10 @@ io.on('connection', (socket) => {
             console.log(`Player ${player.name} played function card: ${card.name}`);
             
             // TODO: Implement function card effects
+            // For now, just remove the card from player's hand
             player.functionCards.splice(data.cardIndex, 1);
             
-            io.to(gameId).emit('playersUpdate', gameData.game.players);
+            io.to(gameId).emit('playersUpdate', game.players);
             io.to(gameId).emit('functionCardPlayed', { 
                 playerId: socket.id, 
                 playerName: player.name,
@@ -370,69 +349,63 @@ io.on('connection', (socket) => {
             });
             
             // Advance to move phase
-            gameData.turnPhase = 'move';
-            io.to(gameId).emit('phaseChanged', { phase: gameData.turnPhase });
+            metadata.turnPhase = 'move';
+            console.log('Phase changed to move after function card');
+            io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
+        } else {
+            console.log('Invalid card index or no player found. Player:', !!player, 'cardIndex:', data.cardIndex, 'hand size:', player ? player.functionCards.length : 0);
         }
     });
 
     socket.on('moveShip', (data) => {
-        const gameId = playerGameMap.get(socket.id);
-        if (!gameId || !games.has(gameId)) return;
+        console.log('moveShip received:', data);
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
         
-        const gameData = games.get(gameId);
-        const player = gameData.game.players.find(p => p.id === socket.id);
+        if (!game) return;
         
+        const player = game.players.find(p => p.id === socket.id);
         if (player) {
+            console.log(`Player ${player.name} movesLeft: ${player.movesLeft}, cost: ${data.cost}`);
             if (player.movesLeft >= data.cost) {
                 player.ship.position = { q: data.q, r: data.r, s: data.s };
+                // Set moves to 0 after any move
                 player.movesLeft = 0;
-                io.to(gameId).emit('playersUpdate', gameData.game.players);
+                console.log(`Ship moved to ${data.q},${data.r},${data.s}. Moves set to 0.`);
+                io.to(gameId).emit('playersUpdate', game.players);
             } else {
                 console.log('Not enough moves left');
             }
+        } else {
+            console.log('Player not found');
         }
     });
 
     socket.on('endTurn', () => {
-        const gameId = playerGameMap.get(socket.id);
-        if (!gameId || !games.has(gameId)) return;
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
         
-        const gameData = games.get(gameId);
+        if (!game || !metadata) return;
         
         // Check if it's this player's turn
-        if (gameData.game.players[gameData.currentTurnIndex].id !== socket.id) {
+        if (game.players[metadata.currentTurnIndex].id !== socket.id) {
             console.log('Not your turn to end!');
             return;
         }
         
         // Move to next player
-        gameData.currentTurnIndex = (gameData.currentTurnIndex + 1) % gameData.game.players.length;
-        gameData.turnPhase = 'roll'; // Reset to roll phase for next player
+        metadata.currentTurnIndex = (metadata.currentTurnIndex + 1) % game.players.length;
+        metadata.turnPhase = 'roll'; // Reset to roll phase for next player
         
         io.to(gameId).emit('turnChanged', {
-            currentPlayerId: gameData.game.players[gameData.currentTurnIndex].id,
-            currentPlayerName: gameData.game.players[gameData.currentTurnIndex].name,
-            turnIndex: gameData.currentTurnIndex,
-            phase: gameData.turnPhase
+            currentPlayerId: game.players[metadata.currentTurnIndex].id,
+            currentPlayerName: game.players[metadata.currentTurnIndex].name,
+            turnIndex: metadata.currentTurnIndex,
+            phase: metadata.turnPhase
         });
     });
 });
-
-// Helper function to broadcast lobby update to all connected clients
-function broadcastLobbyUpdate() {
-    const availableGames = Array.from(games.values())
-        .filter(g => g.status === 'waiting')
-        .map(g => ({
-            gameId: g.gameId,
-            name: g.config.gameName,
-            playerCount: g.game.players.length,
-            maxPlayers: g.config.maxPlayers,
-            movementTiles: g.config.movementTiles,
-            asteroidBelts: g.config.asteroidBelts
-        }));
-    
-    io.emit('lobbyUpdate', { availableGames });
-}
 
 server.listen(port, () => {
     console.log(`Server is running on http://localhost:${port} (v2)`);

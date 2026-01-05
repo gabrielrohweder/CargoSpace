@@ -3,7 +3,7 @@ const Grid = require('./grid');
 const Planet = require('./planet');
 
 class Board {
-    constructor(movementTiles = 28) {
+    constructor() {
         this.hub = null;
         this.tiles = [];
         this.unplacedTiles = [];
@@ -11,7 +11,6 @@ class Board {
         this.blackHoleTile = null;
         this.grid = new Grid(100); // Set a scale for the grid
         this.lastPlacedTile = null;
-        this.movementTiles = movementTiles;
     }
 
     generate() {
@@ -47,7 +46,7 @@ class Board {
                 [TileType.TELEPORTATION]: 2,
                 [TileType.ASTEROID_BELT]: 2,
                 [TileType.LANDING]: 6,
-                [TileType.MOVEMENT]: this.movementTiles
+                [TileType.MOVEMENT]: 28
             };
 
             for (const type in tileCounts) {
