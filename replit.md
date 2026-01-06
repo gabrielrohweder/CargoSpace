@@ -41,3 +41,6 @@ npm start
 - Root and Replicator cards now execute target card effects for major cards
 - Complex cards (Market Shift, Market Regulation, Free Port, Hinder, Data Switch) use auto-selection for playability
 - Fixed movement positioning bugs with correct hub position (s: 3)
+- Added reusable cargo selection modal UI for cards that target cargo
+- Jammer now lets player select target player then choose which cargo to lock
+- Free Port now shows player's own cargo and lets them choose which to deliver
