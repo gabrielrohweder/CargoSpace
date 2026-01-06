@@ -2703,18 +2703,29 @@ class GameScene extends Phaser.Scene {
                 // For hub: only register ONE canonical center position (0,0) for movement destination
                 // For planets and other tiles: register all positions
                 if (tile.type === 'hub') {
+                    // Hub always occupies these 6 hexes (hardcoded for reliability)
+                    const hubPositions = [
+                        { q: 0, r: 0 },
+                        { q: 1, r: 0 },
+                        { q: 1, r: -1 },
+                        { q: 0, r: -1 },
+                        { q: -1, r: -1 },
+                        { q: -1, r: 0 }
+                    ];
+                    
                     // Hub uses single central position for movement marker
                     const hubCenterKey = `0,0,3`;
+                    console.log(`[HUB REGISTRATION] Hub positions:`, hubPositions);
                     this.tileData.set(hubCenterKey, {
                         type: tile.type,
                         sprite: sprite,
                         defaultTint: tint,
                         q: 0, r: 0, s: 3,
-                        occupiedPositions: positions
+                        occupiedPositions: hubPositions
                     });
                     
-                    // Register ALL positions in spriteKeyMap for neighbor discovery
-                    positions.forEach(pos => {
+                    // Register ALL hub positions in spriteKeyMap for neighbor discovery
+                    hubPositions.forEach(pos => {
                         const posQ = parseInt(pos.q);
                         const posR = parseInt(pos.r);
                         for (let s = 0; s <= 3; s++) {
@@ -2722,6 +2733,7 @@ class GameScene extends Phaser.Scene {
                             this.registerTileKey(sprite, posKey);
                         }
                     });
+                    console.log(`[HUB REGISTRATION] Registered ${hubPositions.length * 4} keys in spriteKeyMap`);
                 } else {
                     // For planets and other non-movement tiles: register ONE canonical position
                     // but register ALL positions in spriteKeyMap for neighbor discovery
@@ -3003,6 +3015,21 @@ class GameScene extends Phaser.Scene {
                     neighborKey = `${neighbor.q},${neighbor.r},${neighborS}`;
                     neighborTile = this.tileData.get(neighborKey);
                     console.log(`      Fallback to s=3: ${neighborKey}, found:`, neighborTile ? neighborTile.type : 'NO');
+                }
+
+                // Check if this position is part of the hub (hub only registered at 0,0,3)
+                if (!neighborTile) {
+                    const checkKey = `${neighbor.q},${neighbor.r},3`;
+                    const hubTile = this.tileData.get('0,0,3');
+                    if (hubTile && hubTile.type === 'hub' && hubTile.sprite) {
+                        const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
+                        if (hubKeys && hubKeys.has(checkKey)) {
+                            neighborTile = hubTile;
+                            neighborKey = '0,0,3';
+                            neighborS = 3;
+                            console.log(`      Found hub via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r}`);
+                        }
+                    }
                 }
 
                 if (!neighborTile) {

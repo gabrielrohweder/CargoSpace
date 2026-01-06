@@ -234,6 +234,11 @@ io.on('connection', (socket) => {
             console.log(`Game ${gameId} started with ${tileCount} tiles and ${game.players.length} players.`);
             io.to(gameId).emit('debugMessage', `Server: Game started with ${tileCount} tiles.`);
             
+            // Debug: Log hub data before sending
+            const hubTile = game.board.tiles.find(t => t.type === 'hub');
+            console.log('Hub in tiles:', hubTile ? 'YES' : 'NO');
+            console.log('Hub occupiedPositions:', hubTile ? hubTile.occupiedPositions : 'N/A');
+            
             io.to(gameId).emit('gameStarted', {
                 tiles: game.board.tiles,
                 hub: game.board.hub,
