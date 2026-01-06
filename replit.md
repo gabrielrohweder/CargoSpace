@@ -70,3 +70,9 @@ npm start
 - Hub and planet tiles allow multiple players to land simultaneously
 - All other tiles (movement, teleportation, etc.) only allow one player at a time
 - All occupied positions properly registered for pathfinding
+
+### Wild Card Delivery Rules (January 2026)
+- Wild cargo cards (wild color AND wild type) can be delivered to ANY market
+- Wild market cards accept ANY cargo delivery
+- Partial wilds still work: wild color matches any color, wild type matches any type
+- Exact match bonuses only awarded when both color AND type match without wilds

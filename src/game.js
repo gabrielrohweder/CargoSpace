@@ -90,26 +90,30 @@ class Game {
         const marketColorWild = market.color === 'wild';
         const marketTypeWild = market.type === 'wild';
         
-        const colorExactMatch = cargoCard.color === market.color && !cargoColorWild && !marketColorWild;
-        const typeExactMatch = cargoCard.type === market.type && !cargoTypeWild && !marketTypeWild;
+        // Full wild card (both color and type are wild) can be delivered anywhere
+        const cargoIsFullWild = cargoColorWild && cargoTypeWild;
+        // Full wild market accepts anything
+        const marketIsFullWild = marketColorWild && marketTypeWild;
         
-        const colorMatchViaWild = cargoColorWild || marketColorWild;
-        const typeMatchViaWild = cargoTypeWild || marketTypeWild;
+        // If either cargo or market is fully wild, delivery is always valid
+        if (cargoIsFullWild || marketIsFullWild) {
+            return { valid: true, exactMatch: false };
+        }
         
-        const hasColorMatch = colorExactMatch || colorMatchViaWild;
-        const hasTypeMatch = typeExactMatch || typeMatchViaWild;
+        // Check for matches (exact or via wild substitution)
+        const colorMatch = cargoCard.color === market.color || cargoColorWild || marketColorWild;
+        const typeMatch = cargoCard.type === market.type || cargoTypeWild || marketTypeWild;
         
-        const hasConcreteMatch = colorExactMatch || typeExactMatch;
-        
-        if (!hasConcreteMatch && !hasColorMatch && !hasTypeMatch) {
+        // Need at least one match (color OR type)
+        if (!colorMatch && !typeMatch) {
             return { valid: false, reason: 'Cargo does not match market (need same color OR same type)' };
         }
         
-        if (!hasConcreteMatch) {
-            return { valid: false, reason: 'Wild cards require at least one matching attribute' };
-        }
-        
+        // Check for exact match (both color AND type match without wilds)
+        const colorExactMatch = cargoCard.color === market.color && !cargoColorWild && !marketColorWild;
+        const typeExactMatch = cargoCard.type === market.type && !cargoTypeWild && !marketTypeWild;
         const exactMatch = colorExactMatch && typeExactMatch;
+        
         return { valid: true, exactMatch };
     }
     
