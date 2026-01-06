@@ -935,6 +935,66 @@ io.on('connection', (socket) => {
             phase: metadata.turnPhase
         });
     });
+
+    socket.on('deliverCargo', (data) => {
+        console.log('deliverCargo received:', data);
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        const metadata = gameMetadata.get(gameId);
+        
+        if (!game || !metadata) return;
+        
+        const player = game.players.find(p => p.id === socket.id);
+        if (!player) return;
+        
+        // Player must be on a planet to deliver cargo
+        const { planetQ, planetR, cargoIndex } = data;
+        
+        const result = game.deliverCargo(socket.id, planetQ, planetR, cargoIndex);
+        
+        if (result.success) {
+            const planet = game.board.tiles.find(t => 
+                t.type === 'planet' && t.position.q === planetQ && t.position.r === planetR
+            );
+            
+            io.to(gameId).emit('cargoDelivered', {
+                playerId: socket.id,
+                playerName: player.name,
+                planetQ: planetQ,
+                planetR: planetR,
+                newMarket: result.newMarket,
+                exactMatch: result.exactMatch,
+                bonusCard: result.bonusCard ? result.bonusCard.name : null
+            });
+            
+            io.to(gameId).emit('marketUpdated', {
+                planetQ: planetQ,
+                planetR: planetR,
+                market: result.newMarket
+            });
+            
+            io.to(gameId).emit('playersUpdate', game.players);
+        } else {
+            socket.emit('cargoDeliveryFailed', { error: result.error });
+        }
+    });
+
+    socket.on('getMarkets', () => {
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        
+        if (!game) return;
+        
+        const markets = game.board.tiles
+            .filter(t => t.type === 'planet' && t.market)
+            .map(t => ({
+                q: t.position.q,
+                r: t.position.r,
+                market: t.market
+            }));
+        
+        socket.emit('marketsData', { markets });
+    });
 });
 
 server.listen(port, host, () => {

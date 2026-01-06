@@ -57,12 +57,77 @@ class Game {
         }
         this.board.generate();
         console.log("Board generation finished");
+        
+        this.setupMarkets();
+        console.log("Markets initialized on planets");
+        
         for (const player of this.players) {
             this.initializePlayer(player);
         }
         if (this.players.length > 0) {
             this.currentPlayer = this.players[0];
         }
+    }
+    
+    canDeliverCargo(player, planet, cargoCard) {
+        if (!player || !planet || !cargoCard) return { valid: false, reason: 'Invalid parameters' };
+        if (cargoCard.locked) return { valid: false, reason: 'Cargo is locked' };
+        if (!planet.market) return { valid: false, reason: 'Planet has no market' };
+        
+        const shipPos = player.ship.position;
+        if (shipPos.q !== planet.position.q || shipPos.r !== planet.position.r) {
+            return { valid: false, reason: 'Player is not on this planet' };
+        }
+        
+        const market = planet.market;
+        const colorMatch = cargoCard.color === market.color || cargoCard.color === 'wild' || market.color === 'wild';
+        const typeMatch = cargoCard.type === market.type || cargoCard.type === 'wild' || market.type === 'wild';
+        
+        if (!colorMatch && !typeMatch) {
+            return { valid: false, reason: 'Cargo does not match market (need same color OR same type)' };
+        }
+        
+        const exactMatch = (cargoCard.color === market.color && cargoCard.type === market.type);
+        return { valid: true, exactMatch };
+    }
+    
+    deliverCargo(playerId, planetQ, planetR, cargoIndex) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) return { success: false, error: 'Player not found' };
+        
+        const planet = this.board.tiles.find(t => 
+            t instanceof Planet && t.position.q === planetQ && t.position.r === planetR
+        );
+        if (!planet) return { success: false, error: 'Planet not found' };
+        
+        const cargoCard = player.cargo[cargoIndex];
+        if (!cargoCard) return { success: false, error: 'Cargo card not found' };
+        
+        const validation = this.canDeliverCargo(player, planet, cargoCard);
+        if (!validation.valid) return { success: false, error: validation.reason };
+        
+        const oldMarket = planet.market;
+        if (oldMarket) {
+            this.discardPile.add(oldMarket);
+        }
+        
+        player.cargo.splice(cargoIndex, 1);
+        planet.market = cargoCard;
+        
+        let bonusCard = null;
+        if (validation.exactMatch) {
+            bonusCard = this.functionDeck.draw();
+            if (bonusCard) {
+                player.functionCards.push(bonusCard);
+            }
+        }
+        
+        return { 
+            success: true, 
+            exactMatch: validation.exactMatch,
+            bonusCard: bonusCard,
+            newMarket: cargoCard
+        };
     }
 
     removePlayer(id) {
