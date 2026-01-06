@@ -2723,21 +2723,27 @@ class GameScene extends Phaser.Scene {
                         }
                     });
                 } else {
-                    // For planets and other non-movement tiles: register ALL positions
+                    // For planets and other non-movement tiles: register ONE canonical position
+                    // but register ALL positions in spriteKeyMap for neighbor discovery
+                    const canonicalPos = positions[0];
+                    const canonicalQ = parseInt(canonicalPos.q);
+                    const canonicalR = parseInt(canonicalPos.r);
+                    const canonicalKey = `${canonicalQ},${canonicalR},3`;
+                    
+                    this.tileData.set(canonicalKey, {
+                        type: tile.type,
+                        sprite: sprite,
+                        defaultTint: tint,
+                        q: canonicalQ, r: canonicalR, s: 3,
+                        occupiedPositions: positions,
+                        planetId: tile.planetId
+                    });
+                    
+                    // Register ALL positions in spriteKeyMap for neighbor discovery
                     positions.forEach(pos => {
                         const posQ = parseInt(pos.q);
                         const posR = parseInt(pos.r);
-                        const key = `${posQ},${posR},3`;
-                        this.tileData.set(key, {
-                            type: tile.type,
-                            sprite: sprite,
-                            defaultTint: tint,
-                            q: posQ, r: posR, s: 3,
-                            occupiedPositions: positions
-                        });
-                        
-                        // Register all sub-positions in spriteKeyMap
-                        for (let s = 0; s < 3; s++) {
+                        for (let s = 0; s <= 3; s++) {
                             const posKey = `${posQ},${posR},${s}`;
                             this.registerTileKey(sprite, posKey);
                         }
@@ -3182,18 +3188,39 @@ class GameScene extends Phaser.Scene {
                     tile = this.tileData.get(key);
                 }
 
-                // Check if this position is part of the hub (hub only has one entry at 0,0,3)
+                // Check if this position is part of a multi-hex tile (hub or planet)
+                // These tiles only have one entry in tileData but all positions in spriteKeyMap
                 if (!tile) {
                     const checkKey = `${neighbor.q},${neighbor.r},3`;
-                    for (const [sprite, keys] of this.spriteKeyMap.entries()) {
-                        if (keys.has(checkKey)) {
-                            const hubTile = this.tileData.get('0,0,3');
-                            if (hubTile && hubTile.type === 'hub') {
-                                tile = hubTile;
-                                key = '0,0,3';
-                                neighborS = 3;
+                    
+                    // Check hub first
+                    const hubTile = this.tileData.get('0,0,3');
+                    if (hubTile && hubTile.type === 'hub' && hubTile.sprite) {
+                        const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
+                        if (hubKeys && hubKeys.has(checkKey)) {
+                            tile = hubTile;
+                            key = '0,0,3';
+                            neighborS = 3;
+                            console.log(`[HUB LOOKUP] Found hub via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r}`);
+                        }
+                    }
+                    
+                    // If not hub, check all planets via spriteKeyMap
+                    if (!tile) {
+                        for (const [sprite, keys] of this.spriteKeyMap.entries()) {
+                            if (keys.has(checkKey)) {
+                                // Find this sprite's canonical tileData entry
+                                for (const [tileKey, tileEntry] of this.tileData.entries()) {
+                                    if (tileEntry.sprite === sprite && tileEntry.type === 'planet') {
+                                        tile = tileEntry;
+                                        key = tileKey;
+                                        neighborS = 3;
+                                        console.log(`[PLANET LOOKUP] Found planet via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r} -> ${tileKey}`);
+                                        break;
+                                    }
+                                }
+                                if (tile) break;
                             }
-                            break;
                         }
                     }
                 }
