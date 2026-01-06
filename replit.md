@@ -61,3 +61,7 @@ npm start
 - When a player ends their turn on the hub, they refill cargo slots from their depot (up to 3 cards)
 - If they had NO cargo when ending on the hub, they also receive a bonus function card
 - hubArrival socket event notifies all players of the refill with visual notification
+
+### Function Card Updates (January 2026)
+- Market Regulation: Shows a popup where player selects two planets to swap their markets
+- All occupied positions of hub and planets are now registered for proper movement pathfinding

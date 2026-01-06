@@ -1141,6 +1141,21 @@ class UIScene extends Phaser.Scene {
                             this.turnPopup = null;
                         }
                         this.showReplicatorCardSelection(index);
+                    } else if (card.name === 'Market Regulation') {
+                        // Market Regulation needs to select two planets to swap markets
+                        if (this.turnPopup) {
+                            this.turnPopup.setVisible(false);
+                            try {
+                                if (this.turnPopup.list) {
+                                    this.turnPopup.list.forEach(child => {
+                                        try { child.destroy(); } catch (e) {}
+                                    });
+                                }
+                                this.turnPopup.destroy();
+                            } catch (e) {}
+                            this.turnPopup = null;
+                        }
+                        this.showMarketRegulationSelection(index);
                     } else {
                         // Play the card immediately without target
                         if (this.turnPopup) {
@@ -1522,6 +1537,159 @@ class UIScene extends Phaser.Scene {
         
         this.replicatorPopup.add(elements);
         this.replicatorPopup.setDepth(7000);
+    }
+
+    showMarketRegulationSelection(cardIndex) {
+        const gameScene = this.scene.get('GameScene');
+        
+        if (!gameScene || !gameScene.planetSprites || !gameScene.planetMarkets) {
+            this.socket.emit('playFunctionCard', { cardIndex: cardIndex, targetId: null });
+            return;
+        }
+        
+        const planets = [];
+        const seenPlanetIds = new Set();
+        
+        gameScene.planetSprites.forEach((planetData, key) => {
+            if (planetData.tile && planetData.tile.planetId && !seenPlanetIds.has(planetData.tile.planetId)) {
+                seenPlanetIds.add(planetData.tile.planetId);
+                const market = gameScene.planetMarkets.get(key);
+                planets.push({
+                    id: planetData.tile.planetId,
+                    name: planetData.tile.name || `Planet ${planets.length + 1}`,
+                    market: market,
+                    posKey: key
+                });
+            }
+        });
+        
+        if (planets.length < 2) {
+            this.showNotification('Not enough planets to swap markets', 0xFF0000);
+            return;
+        }
+        
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        if (this.marketRegPopup) {
+            this.marketRegPopup.destroy();
+            this.marketRegPopup = null;
+        }
+        
+        this.selectedPlanetsForSwap = [];
+        this.marketRegPopup = this.add.container(centerX, centerY);
+        
+        const popupHeight = Math.max(400, 200 + planets.length * 55);
+        const bg = this.add.rectangle(0, 0, 500, popupHeight, 0x000000, 0.95);
+        bg.setStrokeStyle(4, 0x00AAFF);
+        
+        const titleText = this.add.text(0, -popupHeight/2 + 30, 'Market Regulation', {
+            font: 'bold 24px Arial',
+            fill: '#00AAFF'
+        }).setOrigin(0.5);
+        
+        const descText = this.add.text(0, -popupHeight/2 + 60, 'Select two planets to swap their markets', {
+            font: '14px Arial',
+            fill: '#aaaaaa'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText, descText];
+        
+        const buttonWidth = 420;
+        const buttonHeight = 45;
+        const startY = -popupHeight/2 + 100;
+        const spacing = 8;
+        
+        const planetButtons = [];
+        
+        planets.forEach((planet, index) => {
+            const btnY = startY + index * (buttonHeight + spacing);
+            
+            const marketInfo = planet.market 
+                ? `${planet.market.color || 'wild'} ${planet.market.type || 'wild'}`
+                : 'No market';
+            
+            const planetBtn = this.add.rectangle(0, btnY, buttonWidth, buttonHeight, 0x333366).setInteractive();
+            planetBtn.setStrokeStyle(2, 0x6666CC);
+            planetBtn.planetData = planet;
+            planetBtn.isSelected = false;
+            
+            const planetText = this.add.text(-buttonWidth/2 + 15, btnY, `${planet.name}: ${marketInfo}`, {
+                font: '16px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0, 0.5);
+            
+            planetBtn.on('pointerdown', () => {
+                if (planetBtn.isSelected) {
+                    planetBtn.isSelected = false;
+                    planetBtn.setStrokeStyle(2, 0x6666CC);
+                    planetBtn.fillColor = 0x333366;
+                    this.selectedPlanetsForSwap = this.selectedPlanetsForSwap.filter(p => p.id !== planet.id);
+                } else {
+                    if (this.selectedPlanetsForSwap.length >= 2) {
+                        return;
+                    }
+                    planetBtn.isSelected = true;
+                    planetBtn.setStrokeStyle(3, 0xFFD700);
+                    planetBtn.fillColor = 0x555588;
+                    this.selectedPlanetsForSwap.push(planet);
+                    
+                    if (this.selectedPlanetsForSwap.length === 2) {
+                        if (this.marketRegPopup) {
+                            this.marketRegPopup.destroy();
+                            this.marketRegPopup = null;
+                        }
+                        this.socket.emit('playFunctionCard', {
+                            cardIndex: cardIndex,
+                            targetId: {
+                                planet1Id: this.selectedPlanetsForSwap[0].id,
+                                planet2Id: this.selectedPlanetsForSwap[1].id
+                            }
+                        });
+                        this.selectedPlanetsForSwap = [];
+                    }
+                }
+            });
+            
+            planetBtn.on('pointerover', () => {
+                if (!planetBtn.isSelected) {
+                    planetBtn.fillColor = 0x444477;
+                }
+            });
+            planetBtn.on('pointerout', () => {
+                if (!planetBtn.isSelected) {
+                    planetBtn.fillColor = 0x333366;
+                }
+            });
+            
+            planetButtons.push(planetBtn);
+            elements.push(planetBtn, planetText);
+        });
+        
+        const cancelY = popupHeight/2 - 40;
+        const cancelBtn = this.add.rectangle(0, cancelY, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, cancelY, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.marketRegPopup) {
+                this.marketRegPopup.destroy();
+                this.marketRegPopup = null;
+            }
+            this.selectedPlanetsForSwap = [];
+            this.showYourTurnPopup();
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.marketRegPopup.add(elements);
+        this.marketRegPopup.setDepth(7000);
     }
 
     showReplicatorTargetSelection(replicatorCardIndex, replicateIndex, card) {

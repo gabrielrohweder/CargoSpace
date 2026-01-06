@@ -605,21 +605,34 @@ io.on('connection', (socket) => {
                 case 'Market Regulation':
                     {
                         const planets = game.board.tiles.filter(t => t.type === 'planet');
-                        if (planets.length >= 2) {
-                            const idx1 = data.planet1Index !== undefined ? data.planet1Index : 0;
-                            const idx2 = data.planet2Index !== undefined ? data.planet2Index : 1;
-                            const planet1 = planets[idx1];
-                            const planet2 = planets[idx2];
-                            if (planet1 && planet2 && planet1.market && planet2.market) {
-                                const temp = planet1.market;
-                                planet1.market = planet2.market;
-                                planet2.market = temp;
-                                effectMessage = `Swapped markets between two planets`;
-                            } else {
-                                effectMessage = 'Planets do not have markets to swap';
-                            }
+                        let planet1 = null;
+                        let planet2 = null;
+                        
+                        if (data.targetId && data.targetId.planet1Id && data.targetId.planet2Id) {
+                            planet1 = planets.find(p => p.planetId === data.targetId.planet1Id);
+                            planet2 = planets.find(p => p.planetId === data.targetId.planet2Id);
+                        }
+                        
+                        if (planet1 && planet2 && planet1.market && planet2.market) {
+                            const temp = planet1.market;
+                            planet1.market = planet2.market;
+                            planet2.market = temp;
+                            effectMessage = `Swapped markets between ${planet1.name || 'planet'} and ${planet2.name || 'planet'}`;
+                            
+                            const emitMarketUpdate = (planet, market) => {
+                                const positions = planet.occupiedPositions || [planet.position];
+                                positions.forEach(pos => {
+                                    io.to(gameId).emit('marketUpdated', {
+                                        planetQ: parseInt(pos.q),
+                                        planetR: parseInt(pos.r),
+                                        market: market
+                                    });
+                                });
+                            };
+                            emitMarketUpdate(planet1, planet1.market);
+                            emitMarketUpdate(planet2, planet2.market);
                         } else {
-                            effectMessage = 'Not enough planets to swap markets';
+                            effectMessage = 'Could not swap markets - invalid planets';
                         }
                     }
                     break;
