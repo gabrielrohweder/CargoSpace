@@ -1052,6 +1052,21 @@ class UIScene extends Phaser.Scene {
                         } else {
                             this.socket.emit('playFunctionCard', { cardIndex: index, targetId: null });
                         }
+                    } else if (card.name === 'Replicator') {
+                        // Replicator needs to select one of your own function cards to copy
+                        if (this.turnPopup) {
+                            this.turnPopup.setVisible(false);
+                            try {
+                                if (this.turnPopup.list) {
+                                    this.turnPopup.list.forEach(child => {
+                                        try { child.destroy(); } catch (e) {}
+                                    });
+                                }
+                                this.turnPopup.destroy();
+                            } catch (e) {}
+                            this.turnPopup = null;
+                        }
+                        this.showReplicatorCardSelection(index);
                     } else {
                         // Play the card immediately without target
                         if (this.turnPopup) {
@@ -1324,6 +1339,206 @@ class UIScene extends Phaser.Scene {
         
         this.cargoSelectionPopup.add(elements);
         this.cargoSelectionPopup.setDepth(7000);
+    }
+
+    showReplicatorCardSelection(replicatorCardIndex) {
+        const gameScene = this.scene.get('GameScene');
+        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.id === this.socket.id) : null;
+        
+        if (!myPlayer || !myPlayer.functionCards || myPlayer.functionCards.length <= 1) {
+            this.socket.emit('playFunctionCard', { cardIndex: replicatorCardIndex, targetId: null });
+            return;
+        }
+        
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        if (this.replicatorPopup) {
+            this.replicatorPopup.destroy();
+            this.replicatorPopup = null;
+        }
+        
+        this.replicatorPopup = this.add.container(centerX, centerY);
+        
+        const otherCards = myPlayer.functionCards.filter((c, i) => i !== replicatorCardIndex);
+        const popupHeight = Math.max(350, 180 + otherCards.length * 70);
+        
+        const bg = this.add.rectangle(0, 0, 500, popupHeight, 0x000000, 0.95);
+        bg.setStrokeStyle(4, 0x00FF00);
+        
+        const titleText = this.add.text(0, -popupHeight/2 + 30, 'Replicator: Select Card to Copy', {
+            font: 'bold 24px Arial',
+            fill: '#00FF00'
+        }).setOrigin(0.5);
+        
+        const descText = this.add.text(0, -popupHeight/2 + 60, 'Choose one of your cards to replicate its effect', {
+            font: '14px Arial',
+            fill: '#aaaaaa'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText, descText];
+        
+        const cardWidth = 420;
+        const cardHeight = 55;
+        const startY = -popupHeight/2 + 100;
+        const spacing = 10;
+        
+        otherCards.forEach((card, displayIndex) => {
+            const originalIndex = myPlayer.functionCards.indexOf(card);
+            const cardY = startY + displayIndex * (cardHeight + spacing);
+            
+            const cardRect = this.add.rectangle(0, cardY, cardWidth, cardHeight, 0x226622).setInteractive();
+            cardRect.setStrokeStyle(2, 0x44FF44);
+            
+            const nameText = this.add.text(-cardWidth/2 + 15, cardY - 10, card.name, {
+                font: 'bold 16px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0, 0.5);
+            
+            const descCardText = this.add.text(-cardWidth/2 + 15, cardY + 10, card.description || '', {
+                font: '12px Arial',
+                fill: '#aaaaaa',
+                wordWrap: { width: cardWidth - 30 }
+            }).setOrigin(0, 0.5);
+            
+            cardRect.on('pointerdown', () => {
+                console.log('Replicator selected card:', card.name, 'originalIndex:', originalIndex);
+                if (this.replicatorPopup) {
+                    this.replicatorPopup.destroy();
+                    this.replicatorPopup = null;
+                }
+                
+                if (card.requiresTarget) {
+                    this.showReplicatorTargetSelection(replicatorCardIndex, originalIndex, card);
+                } else {
+                    this.socket.emit('playFunctionCard', {
+                        cardIndex: replicatorCardIndex,
+                        replicateIndex: originalIndex,
+                        targetId: null
+                    });
+                }
+            });
+            
+            cardRect.on('pointerover', () => cardRect.fillColor = 0x338833);
+            cardRect.on('pointerout', () => cardRect.fillColor = 0x226622);
+            
+            elements.push(cardRect, nameText, descCardText);
+        });
+        
+        const cancelY = popupHeight/2 - 40;
+        const cancelBtn = this.add.rectangle(0, cancelY, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, cancelY, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.replicatorPopup) {
+                this.replicatorPopup.destroy();
+                this.replicatorPopup = null;
+            }
+            this.showYourTurnPopup();
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.replicatorPopup.add(elements);
+        this.replicatorPopup.setDepth(7000);
+    }
+
+    showReplicatorTargetSelection(replicatorCardIndex, replicateIndex, card) {
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        if (this.replicatorPopup) {
+            this.replicatorPopup.destroy();
+            this.replicatorPopup = null;
+        }
+        
+        this.replicatorPopup = this.add.container(centerX, centerY);
+        
+        const bg = this.add.rectangle(0, 0, 500, 400, 0x000000, 0.95);
+        bg.setStrokeStyle(4, 0x00FF00);
+        
+        const titleText = this.add.text(0, -160, `Replicating: ${card.name}`, {
+            font: 'bold 24px Arial',
+            fill: '#00FF00'
+        }).setOrigin(0.5);
+        
+        const selectText = this.add.text(0, -120, 'Select Target Player:', {
+            font: 'bold 18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText, selectText];
+        
+        const gameScene = this.scene.get('GameScene');
+        const players = gameScene ? gameScene.players : [];
+        
+        const buttonWidth = 200;
+        const buttonHeight = 50;
+        const startY = -60;
+        const spacing = 10;
+        
+        players.forEach((player, index) => {
+            const btnY = startY + index * (buttonHeight + spacing);
+            const isMe = player.id === this.socket.id;
+            const btnColor = isMe ? 0x224488 : 0x444444;
+            
+            const playerBtn = this.add.rectangle(0, btnY, buttonWidth, buttonHeight, btnColor).setInteractive();
+            playerBtn.setStrokeStyle(2, 0xffffff);
+            
+            const playerText = this.add.text(0, btnY, `${player.name}${isMe ? ' (You)' : ''}`, {
+                font: '18px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            
+            playerBtn.on('pointerdown', () => {
+                console.log('Replicator target selected:', player.name);
+                if (this.replicatorPopup) {
+                    this.replicatorPopup.destroy();
+                    this.replicatorPopup = null;
+                }
+                this.socket.emit('playFunctionCard', {
+                    cardIndex: replicatorCardIndex,
+                    replicateIndex: replicateIndex,
+                    targetId: player.id
+                });
+            });
+            
+            playerBtn.on('pointerover', () => playerBtn.fillColor = isMe ? 0x3366AA : 0x666666);
+            playerBtn.on('pointerout', () => playerBtn.fillColor = btnColor);
+            
+            elements.push(playerBtn, playerText);
+        });
+        
+        const cancelY = 150;
+        const cancelBtn = this.add.rectangle(0, cancelY, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, cancelY, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.replicatorPopup) {
+                this.replicatorPopup.destroy();
+                this.replicatorPopup = null;
+            }
+            this.showYourTurnPopup();
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.replicatorPopup.add(elements);
+        this.replicatorPopup.setDepth(7000);
     }
 
     showTurnIndicator(playerName) {

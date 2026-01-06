@@ -44,3 +44,4 @@ npm start
 - Added reusable cargo selection modal UI for cards that target cargo
 - Jammer now lets player select target player then choose which cargo to lock
 - Free Port now shows player's own cargo and lets them choose which to deliver
+- Replicator now shows your function cards and lets you select which one to copy
