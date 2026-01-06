@@ -2527,27 +2527,31 @@ class GameScene extends Phaser.Scene {
                     sprite.destroy();
                 }
             } else {
-                // Non-movement tiles: register canonical s=3 for pathfinding, but ALL positions in spriteKeyMap
-                // This allows neighbors to see us while treating the tile as a single destination
+                // Non-movement tiles: register ALL occupied positions in tileData for pathfinding
+                // This allows movement tiles adjacent to any hex of the tile to find it
                 const firstPos = positions[0];
                 const pq = parseInt(firstPos.q);
                 const pr = parseInt(firstPos.r);
                 
-                // Only register canonical s=3 position in tileData for pathfinding
-                const key = `${pq},${pr},3`;
-                this.tileData.set(key, {
-                    type: tile.type,
-                    sprite: sprite,
-                    defaultTint: tint,
-                    q: pq, r: pr, s: 3,
-                    occupiedPositions: positions  // Store all hex positions for neighbor discovery
+                // Register EVERY occupied position in tileData so neighbors can find this tile
+                positions.forEach(pos => {
+                    const posQ = parseInt(pos.q);
+                    const posR = parseInt(pos.r);
+                    const key = `${posQ},${posR},3`;
+                    this.tileData.set(key, {
+                        type: tile.type,
+                        sprite: sprite,
+                        defaultTint: tint,
+                        q: posQ, r: posR, s: 3,
+                        occupiedPositions: positions  // Store all hex positions for neighbor discovery
+                    });
+                    
+                    // Register all sub-positions in spriteKeyMap
+                    for (let s = 0; s < 3; s++) {
+                        const posKey = `${posQ},${posR},${s}`;
+                        this.registerTileKey(sprite, posKey);
+                    }
                 });
-                
-                // Register all sub-positions (s=0,1,2) in spriteKeyMap so neighbors can find us
-                for (let s = 0; s < 3; s++) {
-                    const posKey = `${pq},${pr},${s}`;
-                    this.registerTileKey(sprite, posKey);
-                }
 
                 // Add debug hover/click handlers to the sprite
                 if (sprite.setInteractive) {
