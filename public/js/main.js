@@ -2017,6 +2017,43 @@ class GameScene extends Phaser.Scene {
             console.log('[DEBUG]', msg);
         });
 
+        this.socket.on('marketsData', (data) => {
+            console.log('Received marketsData:', data);
+            this.planetMarkets = new Map();
+            data.markets.forEach(m => {
+                const key = `${m.q},${m.r}`;
+                this.planetMarkets.set(key, m.market);
+            });
+            this.updateMarketBadges();
+        });
+
+        this.socket.on('marketUpdated', (data) => {
+            console.log('Market updated:', data);
+            const key = `${data.planetQ},${data.planetR}`;
+            if (!this.planetMarkets) this.planetMarkets = new Map();
+            this.planetMarkets.set(key, data.market);
+            this.updateMarketBadge(data.planetQ, data.planetR, data.market);
+        });
+
+        this.socket.on('cargoDelivered', (data) => {
+            console.log('Cargo delivered:', data);
+            const message = data.exactMatch 
+                ? `${data.playerName} delivered cargo for exact match! Bonus function card: ${data.bonusCard}`
+                : `${data.playerName} delivered cargo to planet`;
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene && uiScene.showNotification) {
+                uiScene.showNotification(message, data.exactMatch ? 0xFFD700 : 0x00FF00);
+            }
+        });
+
+        this.socket.on('cargoDeliveryFailed', (data) => {
+            console.log('Cargo delivery failed:', data.error);
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene && uiScene.showNotification) {
+                uiScene.showNotification(`Delivery failed: ${data.error}`, 0xFF0000);
+            }
+        });
+
         // Launch UI Scene AFTER registering socket handlers
         this.scene.launch('UIScene', { socket: this.socket });
 
@@ -2115,6 +2152,7 @@ class GameScene extends Phaser.Scene {
         this.teleportTiles = [];
         this.spriteKeyMap = new Map();
         this.teleporterMap = new Map();
+        this.planetSprites = new Map();
         this.gridScale = data.gridScale || 100;
         const scale = this.gridScale;
         const centerX = this.cameras.main.width / 2;
@@ -2256,6 +2294,14 @@ class GameScene extends Phaser.Scene {
                 sprite.setDisplaySize(s, s * Math.sqrt(3));
                 sprite.setRotation(rotation);
                 sprite.setOrigin(0.5, 0.5);
+                
+                const key = `${q},${r}`;
+                this.planetSprites.set(key, { x: sprite.x, y: sprite.y, sprite: sprite, tile: tile });
+                
+                if (tile.market) {
+                    if (!this.planetMarkets) this.planetMarkets = new Map();
+                    this.planetMarkets.set(key, tile.market);
+                }
             }
 
             // The server sends 'occupiedPositions' for planets and multi-cell tiles.
@@ -2435,6 +2481,12 @@ class GameScene extends Phaser.Scene {
         });
         console.log(`[DEBUG] tileData populated. Size: ${this.tileData.size}`);
         this.buildTeleporterMap();
+        
+        this.socket.emit('getMarkets');
+        
+        this.time.delayedCall(100, () => {
+            this.updateMarketBadges();
+        });
     }
 
     registerTileKey(sprite, key) {
@@ -3325,6 +3377,53 @@ class GameScene extends Phaser.Scene {
         const y = (r * h) - (parity ? h / 3 : 0);
 
         return { x, y };
+    }
+
+    updateMarketBadges() {
+        if (!this.planetMarkets) return;
+        this.planetMarkets.forEach((market, key) => {
+            const [q, r] = key.split(',').map(Number);
+            this.updateMarketBadge(q, r, market);
+        });
+    }
+
+    updateMarketBadge(q, r, market) {
+        if (!this.planetSprites) return;
+        const key = `${q},${r}`;
+        const planetData = this.planetSprites.get(key);
+        if (!planetData) return;
+
+        if (planetData.marketBadge) {
+            planetData.marketBadge.destroy();
+        }
+
+        const { x: spriteX, y: spriteY } = planetData;
+        const colorMap = { red: 0xFF0000, blue: 0x0000FF, green: 0x00FF00, yellow: 0xFFFF00, wild: 0xFFFFFF };
+        const typeSymbols = { food: 'F', energy: 'E', material: 'M', data: 'D', wild: '*' };
+        
+        const badgeContainer = this.add.container(spriteX, spriteY - 40);
+        badgeContainer.setDepth(5);
+        
+        const badgeBg = this.add.rectangle(0, 0, 50, 25, 0x000000, 0.8);
+        badgeBg.setStrokeStyle(2, colorMap[market.color] || 0xFFFFFF);
+        badgeContainer.add(badgeBg);
+        
+        const typeText = this.add.text(0, 0, typeSymbols[market.type] || '?', {
+            font: 'bold 14px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        badgeContainer.add(typeText);
+        
+        const colorDot = this.add.circle(-15, 0, 6, colorMap[market.color] || 0xFFFFFF);
+        badgeContainer.add(colorDot);
+        
+        planetData.marketBadge = badgeContainer;
+        this.boardGroup.add(badgeContainer);
+    }
+
+    getColorHex(colorName) {
+        const colorMap = { red: 0xFF0000, blue: 0x0000FF, green: 0x00FF00, yellow: 0xFFFF00, wild: 0xFFFFFF };
+        return colorMap[colorName] || 0xFFFFFF;
     }
 }
 
