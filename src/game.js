@@ -596,6 +596,58 @@ class Game {
         const die2 = Math.floor(Math.random() * 6) + 1;
         return [die1, die2];
     }
+
+    isPlayerOnHub(player) {
+        if (!player || !player.ship || !this.board || !this.board.hub) return false;
+        
+        const shipPos = player.ship.position;
+        const hubPositions = this.board.hub.occupiedPositions || [{ q: 0, r: 0 }];
+        
+        return hubPositions.some(pos => 
+            parseInt(pos.q) === parseInt(shipPos.q) && parseInt(pos.r) === parseInt(shipPos.r)
+        );
+    }
+
+    refillCargoFromDepot(player, maxCargo = 3) {
+        if (!player) return { cardsDrawn: 0, newCargo: [] };
+        
+        const cardsDrawn = [];
+        while (player.cargo.length < maxCargo && player.depot.length > 0) {
+            const card = player.depot.shift();
+            player.cargo.push(card);
+            cardsDrawn.push(card);
+        }
+        
+        return { cardsDrawn: cardsDrawn.length, newCargo: cardsDrawn };
+    }
+
+    handleHubArrival(playerId) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) return { success: false, error: 'Player not found' };
+        
+        if (!this.isPlayerOnHub(player)) {
+            return { success: false, error: 'Player is not on hub' };
+        }
+        
+        const hadNoCargo = player.cargo.length === 0;
+        const refillResult = this.refillCargoFromDepot(player);
+        
+        let bonusCard = null;
+        if (hadNoCargo && this.functionDeck) {
+            bonusCard = this.functionDeck.draw();
+            if (bonusCard) {
+                player.functionCards.push(bonusCard);
+            }
+        }
+        
+        return {
+            success: true,
+            hadNoCargo: hadNoCargo,
+            cardsRefilled: refillResult.cardsDrawn,
+            newCargo: refillResult.newCargo,
+            bonusCard: bonusCard
+        };
+    }
 }
 
 module.exports = Game;

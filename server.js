@@ -924,6 +924,26 @@ io.on('connection', (socket) => {
             return;
         }
         
+        const player = game.players.find(p => p.id === socket.id);
+        
+        // Check if player is on hub - handle hub arrival
+        if (player && game.isPlayerOnHub(player)) {
+            const hubResult = game.handleHubArrival(socket.id);
+            console.log('Hub arrival result:', hubResult);
+            
+            if (hubResult.success) {
+                io.to(gameId).emit('hubArrival', {
+                    playerId: socket.id,
+                    playerName: player.name,
+                    cardsRefilled: hubResult.cardsRefilled,
+                    hadNoCargo: hubResult.hadNoCargo,
+                    bonusCard: hubResult.bonusCard ? hubResult.bonusCard.name : null
+                });
+                
+                io.to(gameId).emit('playersUpdate', game.players);
+            }
+        }
+        
         // Move to next player
         metadata.currentTurnIndex = (metadata.currentTurnIndex + 1) % game.players.length;
         metadata.turnPhase = 'roll'; // Reset to roll phase for next player

@@ -2128,6 +2128,18 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        this.socket.on('hubArrival', (data) => {
+            console.log('Hub arrival:', data);
+            let message = `${data.playerName} refilled ${data.cardsRefilled} cargo at the hub`;
+            if (data.hadNoCargo && data.bonusCard) {
+                message += ` and received bonus: ${data.bonusCard}`;
+            }
+            const uiScene = this.scene.get('UIScene');
+            if (uiScene && uiScene.showNotification) {
+                uiScene.showNotification(message, data.bonusCard ? 0xFFD700 : 0x00BFFF);
+            }
+        });
+
         // Launch UI Scene AFTER registering socket handlers
         this.scene.launch('UIScene', { socket: this.socket });
 
