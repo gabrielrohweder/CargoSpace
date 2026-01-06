@@ -2046,6 +2046,8 @@ class GameScene extends Phaser.Scene {
         const scale = this.gridScale || 100;
         const offsetX = this.boardOffset ? this.boardOffset.x : 0;
         const offsetY = this.boardOffset ? this.boardOffset.y : 0;
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
 
         const { x, y } = this.axialToPixel(q, r, scale);
 
@@ -2086,11 +2088,9 @@ class GameScene extends Phaser.Scene {
             }
         }
 
-        // Return world position (not screen position)
-        // The board is centered in the world, so we just need axial position + sub-triangle offset + board offset
         return {
-            x: Math.round(x + subX + offsetX),
-            y: Math.round(y + subY + offsetY)
+            x: Math.round(centerX + x + subX + offsetX),
+            y: Math.round(centerY + y + subY + offsetY)
         };
     }
 
