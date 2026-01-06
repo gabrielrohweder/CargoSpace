@@ -3,7 +3,7 @@ const Grid = require('./grid');
 const Planet = require('./planet');
 
 class Board {
-    constructor(movementTiles = 28) {
+    constructor(movementTiles = 28, asteroidBelts = false) {
         this.hub = null;
         this.tiles = [];
         this.unplacedTiles = [];
@@ -12,6 +12,7 @@ class Board {
         this.grid = new Grid(100); // Set a scale for the grid
         this.lastPlacedTile = null;
         this.movementTiles = movementTiles;
+        this.asteroidBelts = asteroidBelts;
     }
 
     generate() {
@@ -19,7 +20,7 @@ class Board {
         let attempts = 0;
         const maxRestarts = 100;
 
-        console.log("Starting board generation...");
+        console.log(`Starting board generation with ${this.movementTiles} movement tiles...`);
 
         while (!success && attempts < maxRestarts) {
             attempts++;
@@ -45,7 +46,7 @@ class Board {
             // Create the triangular tiles
             const tileCounts = {
                 [TileType.TELEPORTATION]: 2,
-                [TileType.ASTEROID_BELT]: 2,
+                [TileType.ASTEROID_BELT]: this.asteroidBelts ? 2 : 0,
                 [TileType.LANDING]: 6,
                 [TileType.MOVEMENT]: this.movementTiles
             };
@@ -76,7 +77,7 @@ class Board {
             if (this.unplacedTiles.length === 0 && this.planetTiles.length === 0) {
                 this.prune();
                 success = true;
-                console.log(`Board generated successfully after ${attempts} attempts.`);
+                console.log(`Board generated successfully after ${attempts} attempts. Total tiles: ${this.tiles.length}`);
             } else {
                 // console.log(`Board generation failed (stuck). Retrying... (Attempt ${attempts})`);
                 // If failed, clear tiles so we don't send partial board
@@ -160,6 +161,7 @@ class Board {
             }
             const randomPosition = availablePositions[Math.floor(Math.random() * availablePositions.length)];
             const tileToPlace = this.unplacedTiles.shift();
+
             this.placeTile(tileToPlace, randomPosition.q, randomPosition.r);
 
             if (tileToPlace.type === TileType.LANDING) {
@@ -396,11 +398,9 @@ class Board {
                         }
                     }
 
-                    // Relaxed rule: Allow touching 1 or 2 tiles.
-                    // If we are in fallback mode (no planets), we can be even more relaxed?
-                    // But getValidPlacements doesn't know about fallback mode.
-                    // Let's just stick to >= 1.
-                    if (occupiedNeighborCount >= 1) {
+                    // Enforce single-edge rule: tile must touch exactly 1 other tile
+                    // This forces the board to expand outward rather than fill in gaps
+                    if (occupiedNeighborCount === 1) {
                         availablePositions.push(neighbor);
                         visitedNeighbors.add(neighborStr);
                     }

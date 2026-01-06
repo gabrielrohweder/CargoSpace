@@ -57,7 +57,8 @@ io.on('connection', (socket) => {
     socket.on('createGame', (data) => {
         console.log('Creating game:', data);
         const gameId = generateGameId();
-        const game = new Game();
+        const movementTiles = data.movementTiles || 6;
+        const game = new Game(movementTiles);
         game.setup([]); // Initialize decks and markets
         
         // Add creator as first player
@@ -919,6 +920,8 @@ io.on('connection', (socket) => {
                 player.ship.position = { q: data.q, r: data.r, s: data.s };
                 // Set moves to 0 after any move
                 player.movesLeft = 0;
+                // Reset stealth mode after movement
+                player.stealth = false;
                 console.log(`Ship moved to ${data.q},${data.r},${data.s}. Moves set to 0.`);
                 io.to(gameId).emit('playersUpdate', game.players);
             } else {

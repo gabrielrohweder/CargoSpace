@@ -6,191 +6,19 @@ const Planet = require('./planet');
 const { TileType } = require('./tile');
 
 class Game {
-    constructor(movementTiles = 6) {
-        this.board = new Board(movementTiles);
+    constructor() {
+        this.board = new Board();
         this.players = [];
         this.cargoDeck = null;
         this.functionDeck = null;
         this.discardPile = new Deck();
         this.currentPlayer = null;
-        this.movementTiles = movementTiles;
-        this.availableColors = ['#0000FF', '#00FF00', '#FFFF00', '#FF0000', '#FFA500', '#800080']; // Blue, Green, Yellow, Red, Orange, Purple
-    }
-
-    addPlayer(id, name) {
-        const color = this.availableColors.shift() || '#FFFFFF';
-        const player = new Player(id, name, color);
-        this.players.push(player);
-        return player;
-    }
-
-    initializePlayer(player, cardsPerPlayer) {
-        player.ship = new Ship();
-        
-        if (this.cargoDeck && cardsPerPlayer > 0) {
-            // Deal 3 cards to cargo (hand), rest to depot
-            const cargoCards = Math.min(3, cardsPerPlayer);
-            const depotCards = cardsPerPlayer - cargoCards;
-            
-            for (let i = 0; i < cargoCards; i++) {
-                const card = this.cargoDeck.draw();
-                if (card) player.cargo.push(card);
-            }
-            for (let i = 0; i < depotCards; i++) {
-                const card = this.cargoDeck.draw();
-                if (card) player.depot.push(card);
-            }
-        }
-        
-        // Deal 2 function cards to each player
-        if (this.functionDeck) {
-            for (let i = 0; i < 2; i++) {
-                const card = this.functionDeck.draw();
-                if (card) player.functionCards.push(card);
-            }
-        }
-    }
-
-    start() {
-        console.log("Game.start() called");
-        if (!this.board) {
-            console.error("Board is undefined!");
-            return;
-        }
-        this.board.generate();
-        console.log("Board generation finished");
-        
-        this.setupMarkets();
-        console.log("Markets initialized on planets");
-        
-        // Calculate cards per player:
-        // 52 total - 6 for markets - 10 for draw deck = 36 to distribute
-        const totalCargoCards = 52;
-        const marketCards = 6; // Already dealt in setupMarkets()
-        const drawDeckCards = 10;
-        const cardsToDistribute = totalCargoCards - marketCards - drawDeckCards;
-        const numPlayers = this.players.length;
-        const baseCardsPerPlayer = numPlayers > 0 ? Math.floor(cardsToDistribute / numPlayers) : 0;
-        const remainder = numPlayers > 0 ? cardsToDistribute % numPlayers : 0;
-        
-        console.log(`Distributing cargo cards: ${baseCardsPerPlayer} base + ${remainder} remainder cards among ${numPlayers} players`);
-        
-        for (let i = 0; i < this.players.length; i++) {
-            // First 'remainder' players get one extra card
-            const cardsForThisPlayer = baseCardsPerPlayer + (i < remainder ? 1 : 0);
-            this.initializePlayer(this.players[i], cardsForThisPlayer);
-        }
-        if (this.players.length > 0) {
-            this.currentPlayer = this.players[0];
-        }
-    }
-    
-    canDeliverCargo(player, planet, cargoCard) {
-        if (!player || !planet || !cargoCard) return { valid: false, reason: 'Invalid parameters' };
-        if (cargoCard.locked) return { valid: false, reason: 'Cargo is locked' };
-        if (!planet.market) return { valid: false, reason: 'Planet has no market' };
-        
-        const shipPos = player.ship.position;
-        const occupiedPositions = planet.occupiedPositions || [planet.position];
-        const isOnPlanet = occupiedPositions.some(pos => 
-            parseInt(pos.q) === parseInt(shipPos.q) && parseInt(pos.r) === parseInt(shipPos.r)
-        );
-        if (!isOnPlanet) {
-            return { valid: false, reason: 'Player is not on this planet' };
-        }
-        
-        const market = planet.market;
-        
-        const cargoColorWild = cargoCard.color === 'wild';
-        const cargoTypeWild = cargoCard.type === 'wild';
-        const marketColorWild = market.color === 'wild';
-        const marketTypeWild = market.type === 'wild';
-        
-        // Full wild card (both color and type are wild) can be delivered anywhere
-        const cargoIsFullWild = cargoColorWild && cargoTypeWild;
-        // Full wild market accepts anything
-        const marketIsFullWild = marketColorWild && marketTypeWild;
-        
-        // If either cargo or market is fully wild, delivery is always valid
-        if (cargoIsFullWild || marketIsFullWild) {
-            return { valid: true, exactMatch: false };
-        }
-        
-        // Check for matches (exact or via wild substitution)
-        const colorMatch = cargoCard.color === market.color || cargoColorWild || marketColorWild;
-        const typeMatch = cargoCard.type === market.type || cargoTypeWild || marketTypeWild;
-        
-        // Need at least one match (color OR type)
-        if (!colorMatch && !typeMatch) {
-            return { valid: false, reason: 'Cargo does not match market (need same color OR same type)' };
-        }
-        
-        // Check for exact match (both color AND type match without wilds)
-        const colorExactMatch = cargoCard.color === market.color && !cargoColorWild && !marketColorWild;
-        const typeExactMatch = cargoCard.type === market.type && !cargoTypeWild && !marketTypeWild;
-        const exactMatch = colorExactMatch && typeExactMatch;
-        
-        return { valid: true, exactMatch };
-    }
-    
-    deliverCargo(playerId, planetQ, planetR, cargoIndex) {
-        const player = this.players.find(p => p.id === playerId);
-        if (!player) return { success: false, error: 'Player not found' };
-        
-        const planet = this.board.tiles.find(t => {
-            if (!(t instanceof Planet)) return false;
-            const occupiedPositions = t.occupiedPositions || [t.position];
-            return occupiedPositions.some(pos => 
-                parseInt(pos.q) === parseInt(planetQ) && parseInt(pos.r) === parseInt(planetR)
-            );
-        });
-        if (!planet) return { success: false, error: 'Planet not found' };
-        
-        const cargoCard = player.cargo[cargoIndex];
-        if (!cargoCard) return { success: false, error: 'Cargo card not found' };
-        
-        const validation = this.canDeliverCargo(player, planet, cargoCard);
-        if (!validation.valid) return { success: false, error: validation.reason };
-        
-        const oldMarket = planet.market;
-        if (oldMarket) {
-            this.discardPile.add(oldMarket);
-        }
-        
-        player.cargo.splice(cargoIndex, 1);
-        planet.market = cargoCard;
-        
-        let bonusCard = null;
-        if (validation.exactMatch) {
-            bonusCard = this.functionDeck.draw();
-            if (bonusCard) {
-                player.functionCards.push(bonusCard);
-            }
-        }
-        
-        return { 
-            success: true, 
-            exactMatch: validation.exactMatch,
-            bonusCard: bonusCard,
-            newMarket: cargoCard
-        };
-    }
-
-    removePlayer(id) {
-        const index = this.players.findIndex(p => p.id === id);
-        if (index !== -1) {
-            const player = this.players[index];
-            // Return color to pool
-            this.availableColors.unshift(player.color);
-            this.players.splice(index, 1);
-        }
     }
 
     setup(playerNames) {
-        // Board generation is now triggered manually via startGame
-        // this.board.generate(); 
+        this.board.generate();
         this.setupDecks();
-        // this.setupPlayers(playerNames); // Deprecated in favor of dynamic addPlayer
+        this.setupPlayers(playerNames);
         this.setupMarkets();
     }
 
@@ -214,42 +42,19 @@ class Game {
         this.cargoDeck = new Deck(cargoCards);
         this.cargoDeck.shuffle();
 
-        // Create function cards with descriptions
+        // Create function cards
         const functionCards = [];
         const functionCardData = {
-            'Repair Bot': { count: 6, description: 'Unlock target player\'s cargo', requiresTarget: true },
-            'Mishap': { count: 2, description: 'Lockout target player\'s cargo', requiresTarget: true },
-            'Rebound': { count: 2, description: 'Target player returns to the hub', requiresTarget: true },
-            'Market Shift': { count: 2, description: 'Change the market of any one planet by putting the top discard pile card on that planet\'s market', requiresTarget: false },
-            'Hijack': { count: 2, description: 'You take a cargo card from a player and that player must lock out their remaining cargo', requiresTarget: true },
-            'Upload': { count: 2, description: 'Place one of your cargo cards onto another player\'s depot', requiresTarget: true },
-            'Impulse': { count: 2, description: 'Target player must shuffle all of their function cards back into the deck', requiresTarget: true },
-            'Expired license': { count: 2, description: 'Target player must put all their cargo cards at the bottom of their depot', requiresTarget: true },
-            'Market Regulation': { count: 2, description: 'Switch any two planetary markets with each other', requiresTarget: false },
-            'Free Port': { count: 2, description: 'Play any one cargo card on your current Planet if it is open', requiresTarget: false },
-            'Hinder': { count: 2, description: 'Place the black hole where you choose', requiresTarget: false },
-            'Recall': { count: 2, description: 'Send any player to the Hub. They must fill all empty cargo slots and cannot draw a Function card', requiresTarget: true },
-            'Jammer': { count: 2, description: 'Choose one cargo unit for each player to lock down, including yourself', requiresTarget: false },
-            'Jettison': { count: 2, description: 'Target player shuffles one cargo card of your choice into the Discard deck', requiresTarget: true },
-            'Delivery': { count: 2, description: 'Target player fills their cargo slots from their depot', requiresTarget: true },
-            'Warp': { count: 2, description: 'Target player moves to a random planet', requiresTarget: true },
-            'Stealth': { count: 2, description: 'Move four spaces. Nothing can block your movement (No asteroids, players or black holes can block movement)', requiresTarget: false },
-            'Data Switch': { count: 2, description: 'Switch one cargo card belonging to any player for another player\'s cargo card', requiresTarget: false },
-            'Jump': { count: 2, description: 'Target player jumps to any planet of card player\'s choice', requiresTarget: true },
-            'Glitch': { count: 2, description: 'Draw a new function card. Move your ship any number of spaces, up to 10', requiresTarget: false },
-            'I.D. Fraud': { count: 1, description: 'Target player loads their open cargo slots from your depot', requiresTarget: true },
-            'Replicator': { count: 1, description: 'Reveal one of your function cards to all players. Play replicator as if it were that card', requiresTarget: false },
-            'Breakdown': { count: 1, description: 'Target player skips their next turn', requiresTarget: true },
-            'Root': { count: 1, description: 'Look at target player\'s function cards. You must play one of those cards as your own', requiresTarget: true },
-            'EMP': { count: 1, description: 'All players shuffle their function cards back into the deck. Including you', requiresTarget: false }
+            'Repair Bot': 6, 'Mishap': 2, 'Rebound': 2, 'Market Shift': 2, 'Hijack': 2,
+            'Upload': 2, 'Impulse': 2, 'Expired license': 2, 'Market Regulation': 2,
+            'Free Port': 2, 'Hinder': 2, 'Recall': 2, 'Jammer': 2, 'Jettison': 2,
+            'Delivery': 2, 'Warp': 2, 'Stealth': 2, 'Data Switch': 2, 'Jump': 2,
+            'Glitch': 2, 'I.D. Fraud': 1, 'Replicator': 1, 'Breakdown': 1, 'Root': 1, 'EMP': 1
         };
 
         for (const name in functionCardData) {
-            const { count, description, requiresTarget } = functionCardData[name];
-            for (let i = 0; i < count; i++) {
-                const card = new FunctionCard(name, description);
-                card.requiresTarget = requiresTarget;
-                functionCards.push(card);
+            for (let i = 0; i < functionCardData[name]; i++) {
+                functionCards.push(new FunctionCard(name, ''));
             }
         }
 
@@ -261,8 +66,7 @@ class Game {
         for (let i = 0; i < playerNames.length; i++) {
             const player = new Player(i, playerNames[i]);
             const ship = new Ship();
-            // Default to Hub center (0,0) sub-index 3 (Center)
-            ship.position = { q: 0, r: 0, s: 3 };
+            ship.position = this.board.hub.position;
             player.ship = ship;
             this.players.push(player);
         }
@@ -278,7 +82,9 @@ class Game {
         }
     }
 
-
+    start() {
+        this.currentPlayer = this.players[0];
+    }
 
     move(direction) {
         const { q, r } = this.currentPlayer.ship.position;
@@ -588,85 +394,11 @@ class Game {
                     this.functionDeck.shuffle();
                     this.currentPlayer.functionCards.splice(cardIndex, 1);
                     return true;
-                case 'Root':
-                    // Root card is handled separately - first show target's cards, then play selected card
-                    // targetId should contain: { targetPlayerId, selectedCardIndex }
-                    if (targetId && targetId.selectedCardIndex !== undefined) {
-                        const targetPlayerRoot = this.players.find(p => p.id === targetId.targetPlayerId);
-                        if (targetPlayerRoot && targetPlayerRoot.functionCards[targetId.selectedCardIndex]) {
-                            // Play the selected card from target's hand as if current player played it
-                            const success = this.playFunctionCard(targetId.selectedCardIndex, targetId.cardTarget);
-                            if (success) {
-                                // Remove the Root card from current player's hand
-                                this.currentPlayer.functionCards.splice(cardIndex, 1);
-                                return true;
-                            }
-                        }
-                    }
-                    return false;
                 default:
                     return false;
             }
         }
         return false;
-    }
-
-    rollDice() {
-        const die1 = Math.floor(Math.random() * 6) + 1;
-        const die2 = Math.floor(Math.random() * 6) + 1;
-        return [die1, die2];
-    }
-
-    isPlayerOnHub(player) {
-        if (!player || !player.ship || !this.board || !this.board.hub) return false;
-        
-        const shipPos = player.ship.position;
-        const hubPositions = this.board.hub.occupiedPositions || [{ q: 0, r: 0 }];
-        
-        return hubPositions.some(pos => 
-            parseInt(pos.q) === parseInt(shipPos.q) && parseInt(pos.r) === parseInt(shipPos.r)
-        );
-    }
-
-    refillCargoFromDepot(player, maxCargo = 3) {
-        if (!player) return { cardsDrawn: 0, newCargo: [] };
-        
-        const cardsDrawn = [];
-        while (player.cargo.length < maxCargo && player.depot.length > 0) {
-            const card = player.depot.shift();
-            player.cargo.push(card);
-            cardsDrawn.push(card);
-        }
-        
-        return { cardsDrawn: cardsDrawn.length, newCargo: cardsDrawn };
-    }
-
-    handleHubArrival(playerId) {
-        const player = this.players.find(p => p.id === playerId);
-        if (!player) return { success: false, error: 'Player not found' };
-        
-        if (!this.isPlayerOnHub(player)) {
-            return { success: false, error: 'Player is not on hub' };
-        }
-        
-        const hadNoCargo = player.cargo.length === 0;
-        const refillResult = this.refillCargoFromDepot(player);
-        
-        let bonusCard = null;
-        if (hadNoCargo && this.functionDeck) {
-            bonusCard = this.functionDeck.draw();
-            if (bonusCard) {
-                player.functionCards.push(bonusCard);
-            }
-        }
-        
-        return {
-            success: true,
-            hadNoCargo: hadNoCargo,
-            cardsRefilled: refillResult.cardsDrawn,
-            newCargo: refillResult.newCargo,
-            bonusCard: bonusCard
-        };
     }
 }
 

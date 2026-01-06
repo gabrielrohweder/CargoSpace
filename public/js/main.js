@@ -161,7 +161,7 @@ class LobbyScene extends Phaser.Scene {
         yOffset += 60;
         
         // Movement Tiles
-        const tilesLabel = this.add.text(-250, yOffset, 'Movement Tiles:', {
+        const tilesLabel = this.add.text(-250, yOffset, 'Board Size:', {
             font: 'bold 16px Arial',
             fill: '#ffffff'
         });
@@ -174,6 +174,11 @@ class LobbyScene extends Phaser.Scene {
         tilesContainer.style.alignItems = 'center';
         tilesContainer.style.gap = '10px';
         
+        const smallLabel = document.createElement('span');
+        smallLabel.textContent = 'Small';
+        smallLabel.style.color = '#ffffff';
+        smallLabel.style.fontSize = '14px';
+        
         const tilesInput = document.createElement('input');
         tilesInput.type = 'range';
         tilesInput.value = '50';
@@ -182,18 +187,14 @@ class LobbyScene extends Phaser.Scene {
         tilesInput.style.width = '150px';
         tilesInput.style.height = '20px';
         
-        const tilesValue = document.createElement('span');
-        tilesValue.textContent = '50';
-        tilesValue.style.color = '#ffffff';
-        tilesValue.style.fontSize = '16px';
-        tilesValue.style.minWidth = '30px';
+        const largeLabel = document.createElement('span');
+        largeLabel.textContent = 'Large';
+        largeLabel.style.color = '#ffffff';
+        largeLabel.style.fontSize = '14px';
         
-        tilesInput.addEventListener('input', () => {
-            tilesValue.textContent = tilesInput.value;
-        });
-        
+        tilesContainer.appendChild(smallLabel);
         tilesContainer.appendChild(tilesInput);
-        tilesContainer.appendChild(tilesValue);
+        tilesContainer.appendChild(largeLabel);
         document.body.appendChild(tilesContainer);
         
         yOffset += 60;
@@ -738,7 +739,8 @@ class UIScene extends Phaser.Scene {
 
         const cargoSectionWidth = (3 * cardWidth) + (2 * spacing);
         const depotSectionWidth = cardWidth;
-        const funcSectionWidth = (player.functionCards.length * cardWidth) + ((player.functionCards.length - 1) * spacing);
+        const funcCardWidth = cardWidth * 1.5;  // Function cards are scaled by 1.5
+        const funcSectionWidth = (player.functionCards.length * funcCardWidth) + ((player.functionCards.length - 1) * spacing);
         
         const totalWidth = cargoSectionWidth + sectionSpacing + depotSectionWidth + sectionSpacing + (funcSectionWidth > 0 ? funcSectionWidth : 100);
         
@@ -860,42 +862,82 @@ class UIScene extends Phaser.Scene {
         this.currentPlayerGroup.add(this.add.text(currentX, panelY + 20, 'Function Cards', { font: '24px Arial', fill: '#ffffff' }));
 
         player.functionCards.forEach((card, index) => {
-            const cardX = currentX + (cardWidth / 2) + (index * (cardWidth + spacing));
+            const funcCardWidth = cardWidth * 1.5;
+            const cardX = currentX + (funcCardWidth / 2) + (index * (funcCardWidth + spacing));
             const cardY = centerY + 20;
             
-            const cardRect = this.add.rectangle(cardX, cardY, cardWidth, cardHeight, 0xAA00AA).setInteractive();
-            cardRect.setStrokeStyle(2, 0x000000);
-            this.currentPlayerGroup.add(cardRect);
+            // Use function_card.png as background
+            const cardImage = this.add.image(cardX, cardY, 'function_card').setInteractive();
+            cardImage.setDisplaySize(cardWidth * 1.5, cardHeight * 1.5);
+            this.currentPlayerGroup.add(cardImage);
 
-            const nameText = this.add.text(cardX - 45, cardY - 30, card.name, { 
-                font: '14px Arial', 
+            // Add title in the top box
+            const nameText = this.add.text(cardX, cardY - 52, card.name, { 
+                font: 'bold 14px Arial', 
                 fill: '#ffffff',
-                wordWrap: { width: 90 }
-            });
+                wordWrap: { width: 128 },
+                align: 'center'
+            }).setOrigin(0.5);
             this.currentPlayerGroup.add(nameText);
             
-            // Add hover tooltip for card description
-            let tooltip = null;
-            cardRect.on('pointerover', () => {
+            // Add hover popup with title and description
+            let hoverPopup = null;
+            let hoverLine = null;
+            cardImage.on('pointerover', () => {
                 if (card.description) {
-                    tooltip = this.add.container(cardX, cardY - cardHeight / 2 - 10);
-                    const tooltipBg = this.add.rectangle(0, -40, cardWidth + 20, 80, 0x000000, 0.9);
-                    tooltipBg.setStrokeStyle(2, 0xffffff);
-                    const tooltipText = this.add.text(0, -40, card.description, {
-                        font: '11px Arial',
-                        fill: '#ffffff',
-                        wordWrap: { width: cardWidth + 10 },
+                    // Create popup container
+                    const popupWidth = 200;
+                    const popupHeight = 120;
+                    const popupX = cardX;
+                    const popupY = cardY - (cardHeight * 1.5) / 2 - popupHeight / 2 - 30;
+                    
+                    hoverPopup = this.add.container(popupX, popupY);
+                    
+                    // Background
+                    const bg = this.add.rectangle(0, 0, popupWidth, popupHeight, 0x000000, 0.95);
+                    bg.setStrokeStyle(3, 0xffffff);
+                    hoverPopup.add(bg);
+                    
+                    // Title
+                    const titleText = this.add.text(0, -popupHeight / 2 + 15, card.name, {
+                        font: 'bold 16px Arial',
+                        fill: '#FFD700',
+                        wordWrap: { width: popupWidth - 20 },
                         align: 'center'
-                    }).setOrigin(0.5);
-                    tooltip.add([tooltipBg, tooltipText]);
-                    tooltip.setDepth(3000);
-                    this.currentPlayerGroup.add(tooltip);
+                    }).setOrigin(0.5, 0);
+                    hoverPopup.add(titleText);
+                    
+                    // Description
+                    const descText = this.add.text(0, -popupHeight / 2 + 45, card.description, {
+                        font: '14px Arial',
+                        fill: '#ffffff',
+                        wordWrap: { width: popupWidth - 20 },
+                        align: 'center'
+                    }).setOrigin(0.5, 0);
+                    hoverPopup.add(descText);
+                    
+                    hoverPopup.setDepth(3000);
+                    this.currentPlayerGroup.add(hoverPopup);
+                    
+                    // Draw line from popup to card
+                    hoverLine = this.add.graphics();
+                    hoverLine.lineStyle(2, 0xffffff, 1);
+                    hoverLine.beginPath();
+                    hoverLine.moveTo(popupX, popupY + popupHeight / 2);
+                    hoverLine.lineTo(cardX, cardY - (cardHeight * 1.5) / 2);
+                    hoverLine.strokePath();
+                    hoverLine.setDepth(2999);
+                    this.currentPlayerGroup.add(hoverLine);
                 }
             });
-            cardRect.on('pointerout', () => {
-                if (tooltip) {
-                    tooltip.destroy();
-                    tooltip = null;
+            cardImage.on('pointerout', () => {
+                if (hoverPopup) {
+                    hoverPopup.destroy();
+                    hoverPopup = null;
+                }
+                if (hoverLine) {
+                    hoverLine.destroy();
+                    hoverLine = null;
                 }
             });
         });
@@ -988,10 +1030,15 @@ class UIScene extends Phaser.Scene {
         // Calculate popup height based on whether there are function cards
         const popupHeight = functionCards.length > 0 ? 450 : 300;
         
+        // Calculate popup width based on number of function cards
+        const baseWidth = 600;
+        const cardTotalWidth = functionCards.length > 0 ? (functionCards.length * 110 + 40) : 0; // 100 card + 10 spacing
+        const popupWidth = Math.max(baseWidth, cardTotalWidth);
+        
         this.turnPopup = this.add.container(centerX, centerY).setScrollFactor(0).setDepth(2000);
         
         // Background - non-interactive so clicks pass through to buttons/cards
-        const bg = this.add.rectangle(0, 0, 600, popupHeight, 0x000000, 0.9);
+        const bg = this.add.rectangle(0, 0, popupWidth, popupHeight, 0x000000, 0.9);
         bg.setStrokeStyle(4, 0xffffff);
         // Don't make background interactive - let clicks go to the buttons/cards
         
@@ -1047,19 +1094,22 @@ class UIScene extends Phaser.Scene {
         
         const elements = [bg, titleText, btn, btnText];
         
+        // Add all elements to the container
+        elements.forEach(el => this.turnPopup.add(el));
+        
         // Add function cards if any
         if (functionCards.length > 0) {
             const orText = this.add.text(0, 20, '- OR -', {
                 font: 'bold 24px Arial',
                 fill: '#888888'
             }).setOrigin(0.5);
-            elements.push(orText);
+            this.turnPopup.add(orText);
             
             const cardLabel = this.add.text(0, 60, 'Play a Function Card:', {
                 font: '20px Arial',
                 fill: '#ffffff'
             }).setOrigin(0.5);
-            elements.push(cardLabel);
+            this.turnPopup.add(cardLabel);
             
             const cardWidth = 100;
             const cardHeight = 120;
@@ -1067,50 +1117,94 @@ class UIScene extends Phaser.Scene {
             const totalWidth = functionCards.length * (cardWidth + cardSpacing) - cardSpacing;
             const startX = -totalWidth / 2 + cardWidth / 2;
             
+            console.log('Rendering function cards in popup:', functionCards.length, 'cards, startX:', startX, 'totalWidth:', totalWidth);
+            
             functionCards.forEach((card, index) => {
-                const cardX = startX + index * (cardWidth + cardSpacing);
-                const cardY = 150;
+                try {
+                    const cardX = startX + index * (cardWidth + cardSpacing);
+                    const cardY = 150;
+                    console.log('Card', index, card.name, 'at position', cardX, cardY);
                 
-                const cardRect = this.add.rectangle(cardX, cardY, cardWidth, cardHeight, 0xAA00AA).setInteractive();
-                cardRect.setStrokeStyle(3, 0xffffff);
+                // Use function_card.png as background
+                const cardImage = this.add.image(cardX, cardY, 'function_card').setInteractive();
+                cardImage.setDisplaySize(cardWidth, cardHeight);
+                this.turnPopup.add(cardImage);
+                console.log('Card', index, 'image added to container');
                 
-                const nameText = this.add.text(cardX, cardY - 30, card.name, {
-                    font: '14px Arial',
+                // Add title in the top box
+                const nameText = this.add.text(cardX, cardY - 35, card.name, {
+                    font: 'bold 12px Arial',
                     fill: '#ffffff',
-                    wordWrap: { width: cardWidth - 10 },
+                    wordWrap: { width: 85 },
                     align: 'center'
                 }).setOrigin(0.5);
+                this.turnPopup.add(nameText);
                 
-                // Add hover tooltip for card description
-                let tooltip = null;
-                cardRect.on('pointerover', () => {
-                    cardRect.fillColor = 0xCC00CC;
+                // Add hover popup with title and description
+                let hoverPopup = null;
+                let hoverLine = null;
+                cardImage.on('pointerover', () => {
                     if (card.description) {
-                        tooltip = this.add.container(cardX, cardY + cardHeight / 2 + 10);
-                        const tooltipBg = this.add.rectangle(0, 40, cardWidth + 20, 80, 0x000000, 0.9);
-                        tooltipBg.setStrokeStyle(2, 0xffffff);
-                        const tooltipText = this.add.text(0, 40, card.description, {
-                            font: '11px Arial',
-                            fill: '#ffffff',
-                            wordWrap: { width: cardWidth + 10 },
+                        // Create popup container
+                        const popupWidth = 220;
+                        const popupHeight = 130;
+                        const popupX = cardX;
+                        const popupY = cardY - cardHeight / 2 - popupHeight / 2 - 20;
+                        
+                        hoverPopup = this.add.container(popupX, popupY);
+                        
+                        // Background
+                        const bg = this.add.rectangle(0, 0, popupWidth, popupHeight, 0x000000, 0.95);
+                        bg.setStrokeStyle(3, 0xffffff);
+                        hoverPopup.add(bg);
+                        
+                        // Title
+                        const titleText = this.add.text(0, -popupHeight / 2 + 15, card.name, {
+                            font: 'bold 16px Arial',
+                            fill: '#FFD700',
+                            wordWrap: { width: popupWidth - 20 },
                             align: 'center'
-                        }).setOrigin(0.5);
-                        tooltip.add([tooltipBg, tooltipText]);
-                        tooltip.setDepth(6000);
+                        }).setOrigin(0.5, 0);
+                        hoverPopup.add(titleText);
+                        
+                        // Description
+                        const descText = this.add.text(0, -popupHeight / 2 + 45, card.description, {
+                            font: '14px Arial',
+                            fill: '#ffffff',
+                            wordWrap: { width: popupWidth - 20 },
+                            align: 'center'
+                        }).setOrigin(0.5, 0);
+                        hoverPopup.add(descText);
+                        
+                        hoverPopup.setDepth(6000);
+                        this.turnPopup.add(hoverPopup);
+                        
+                        // Draw line from popup to card
+                        hoverLine = this.add.graphics();
+                        hoverLine.lineStyle(2, 0xffffff, 1);
+                        hoverLine.beginPath();
+                        hoverLine.moveTo(popupX, popupY + popupHeight / 2);
+                        hoverLine.lineTo(cardX, cardY - cardHeight / 2);
+                        hoverLine.strokePath();
+                        hoverLine.setDepth(5999);
+                        this.turnPopup.add(hoverLine);
                     }
                 });
-                cardRect.on('pointerout', () => {
-                    cardRect.fillColor = 0xAA00AA;
-                    if (tooltip) {
-                        tooltip.destroy();
-                        tooltip = null;
+                cardImage.on('pointerout', () => {
+                    if (hoverPopup) {
+                        hoverPopup.destroy();
+                        hoverPopup = null;
+                    }
+                    if (hoverLine) {
+                        hoverLine.destroy();
+                        hoverLine = null;
                     }
                 });
                 
-                cardRect.on('pointerdown', () => {
+                cardImage.on('pointerdown', () => {
                     console.log('Function card clicked:', card.name, 'index:', index, 'requires target:', card.requiresTarget);
                     // Disable the card immediately to prevent double-clicks
-                    cardRect.setInteractive(false);
+                    cardImage.setInteractive(false);
                     
                     // Check if this card requires a target
                     if (card.requiresTarget) {
@@ -1199,15 +1293,11 @@ class UIScene extends Phaser.Scene {
                         this.socket.emit('playFunctionCard', { cardIndex: index, targetId: null });
                     }
                 });
-                
-                cardRect.on('pointerover', () => cardRect.fillColor = 0xCC00CC);
-                cardRect.on('pointerout', () => cardRect.fillColor = 0xAA00AA);
-                
-                elements.push(cardRect, nameText);
+                } catch (error) {
+                    console.error('Error creating function card', index, ':', error);
+                }
             });
         }
-        
-        this.turnPopup.add(elements);
     }
 
     showPlayerSelectionDialog(card, cardIndex) {
@@ -2179,6 +2269,8 @@ class GameScene extends Phaser.Scene {
         this.load.image('planet3', 'assets/images/planet3.png');
         this.load.image('planet4', 'assets/images/planet4.png');
         this.load.image('planet5', 'assets/images/planet5.png');
+        // Load function card image
+        this.load.image('function_card', 'assets/images/function_card.png');
         // Load the animated GIF as a spritesheet
         // Note: Phaser doesn't natively support animated GIFs, we'll need to handle this differently
         this.load.image('teleporter', 'assets/images/teleporter.gif');
@@ -2419,6 +2511,8 @@ class GameScene extends Phaser.Scene {
 
     renderBoard(data) {
         console.log(`[DEBUG] renderBoard called with ${data.tiles.length} tiles.`);
+        // Store board data for re-rendering on resize
+        this.lastBoardData = data;
         this.boardGroup.clear(true, true);
         this.tileData.clear();
         this.teleportTiles = [];
@@ -2476,7 +2570,7 @@ class GameScene extends Phaser.Scene {
                 tint = 0xffffff;
             } else if (tile.type === 'teleportation') {
                 texture = 'triangle';
-                tint = 0x00ffff; // Cyan color for teleporters
+                tint = 0x8800ff; // Purple/magenta color for wormholes
             } else if (tile.type === 'black_hole') {
                 texture = 'triangle';
                 tint = 0x000000;
@@ -2538,6 +2632,30 @@ class GameScene extends Phaser.Scene {
             sprite.setDepth(1);
             this.boardGroup.add(sprite);
             sprite.setTint(tint);
+
+            // Add wormhole animation for teleportation tiles
+            if (tile.type === 'teleportation') {
+                // Pulsing scale effect
+                this.tweens.add({
+                    targets: sprite,
+                    scaleX: 1.2,
+                    scaleY: 1.2,
+                    alpha: 0.7,
+                    duration: 1000,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut'
+                });
+                
+                // Rotating effect
+                this.tweens.add({
+                    targets: sprite,
+                    angle: 360,
+                    duration: 3000,
+                    repeat: -1,
+                    ease: 'Linear'
+                });
+            }
 
             // Debug: log a few sprite positions for inspection
             if (tile.type === 'hub' || tile.type === 'planet' || tile.type === 'movement') {
@@ -3107,8 +3225,8 @@ class GameScene extends Phaser.Scene {
         return results;
     }
 
-    highlightReachableTiles(startQ, startR, startS, range) {
-        console.log(`Highlighting tiles from ${startQ},${startR},${startS} range ${range}`);
+    highlightReachableTiles(startQ, startR, startS, range, stealthMode = false) {
+        console.log(`Highlighting tiles from ${startQ},${startR},${startS} range ${range} stealth=${stealthMode}`);
         console.log('Teleport tiles:', this.teleportTiles);
         this.clearHighlights();
 
@@ -3117,23 +3235,25 @@ class GameScene extends Phaser.Scene {
         try {
         console.log('Starting BFS setup...');
 
-        // Identify occupied tiles so we do not path through ships
+        // Identify occupied tiles so we do not path through ships (unless stealth mode)
         const occupiedTiles = new Set();
-        this.players.forEach(p => {
-            if (p.id !== this.socket.id && p.ship) {
-                const sPos = p.ship.position.s !== undefined ? p.ship.position.s : 3;
-                let occKey = `${p.ship.position.q},${p.ship.position.r},${sPos}`;
-                let occTile = this.tileData.get(occKey);
-                if (!occTile && sPos !== 3) {
-                    occKey = `${p.ship.position.q},${p.ship.position.r},3`;
-                    occTile = this.tileData.get(occKey);
+        if (!stealthMode) {
+            this.players.forEach(p => {
+                if (p.id !== this.socket.id && p.ship) {
+                    const sPos = p.ship.position.s !== undefined ? p.ship.position.s : 3;
+                    let occKey = `${p.ship.position.q},${p.ship.position.r},${sPos}`;
+                    let occTile = this.tileData.get(occKey);
+                    if (!occTile && sPos !== 3) {
+                        occKey = `${p.ship.position.q},${p.ship.position.r},3`;
+                        occTile = this.tileData.get(occKey);
+                    }
+                    if (occTile && occTile.type !== 'movement') {
+                        occKey = `${p.ship.position.q},${p.ship.position.r},3`;
+                    }
+                    occupiedTiles.add(occKey);
                 }
-                if (occTile && occTile.type !== 'movement') {
-                    occKey = `${p.ship.position.q},${p.ship.position.r},3`;
-                }
-                occupiedTiles.add(occKey);
-            }
-        });
+            });
+        }
 
         const q = parseInt(startQ);
         const r = parseInt(startR);
@@ -3197,9 +3317,9 @@ class GameScene extends Phaser.Scene {
                         }
 
                         const occupancyKey = destTile.type === 'movement' ? destKey : `${destTile.q},${destTile.r},3`;
-                        const blocked = destTile.type === 'asteroid_belt' || destTile.type === 'black_hole';
+                        const blocked = !stealthMode && (destTile.type === 'asteroid_belt' || destTile.type === 'black_hole');
                         const destAllowsMultiple = destTile.type === 'hub' || destTile.type === 'planet';
-                        if (blocked || (!destAllowsMultiple && occupiedTiles.has(occupancyKey))) {
+                        if (blocked || (!stealthMode && !destAllowsMultiple && occupiedTiles.has(occupancyKey))) {
                             return;
                         }
 
@@ -3327,9 +3447,9 @@ class GameScene extends Phaser.Scene {
                 let stepCost = 1;
 
                 const occupancyKey = tile.type === 'movement' ? key : `${tile.q},${tile.r},3`;
-                const isBlocked = tile.type === 'asteroid_belt' || tile.type === 'black_hole';
+                const isBlocked = !stealthMode && (tile.type === 'asteroid_belt' || tile.type === 'black_hole');
                 const allowsMultiplePlayers = tile.type === 'hub' || tile.type === 'planet';
-                const isOccupied = !allowsMultiplePlayers && occupiedTiles.has(occupancyKey);
+                const isOccupied = !stealthMode && !allowsMultiplePlayers && occupiedTiles.has(occupancyKey);
 
                 if (isBlocked || isOccupied) {
                     continue;
@@ -3350,9 +3470,9 @@ class GameScene extends Phaser.Scene {
                                 }
 
                                 const destOccupancyKey = destTile.type === 'movement' ? destKey : `${destTile.q},${destTile.r},3`;
-                                const blocked = destTile.type === 'asteroid_belt' || destTile.type === 'black_hole';
+                                const blocked = !stealthMode && (destTile.type === 'asteroid_belt' || destTile.type === 'black_hole');
                                 const destAllowsMultiple = destTile.type === 'hub' || destTile.type === 'planet';
-                                if (blocked || (!destAllowsMultiple && occupiedTiles.has(destOccupancyKey))) {
+                                if (blocked || (!stealthMode && !destAllowsMultiple && occupiedTiles.has(destOccupancyKey))) {
                                     return;
                                 }
 
@@ -3401,6 +3521,12 @@ class GameScene extends Phaser.Scene {
             const tile = this.tileData.get(key);
             if (!tile) {
                 console.log(`    No tile found in tileData for ${key}`);
+                continue;
+            }
+
+            // Skip asteroids and black holes as landing spots (even in stealth mode)
+            if (tile.type === 'asteroid_belt' || tile.type === 'black_hole') {
+                console.log(`    Skipping ${tile.type} for marker placement`);
                 continue;
             }
 
@@ -3680,7 +3806,8 @@ class GameScene extends Phaser.Scene {
                         console.log('Pointer down on ship. Moves:', this.myPlayer.movesLeft);
                         event.stopPropagation(); // Prevent tile clicks when clicking ship
                         if (this.myPlayer.movesLeft > 0) {
-                            this.highlightReachableTiles(q, r, s, this.myPlayer.movesLeft);
+                            const stealthMode = this.myPlayer.stealth || false;
+                            this.highlightReachableTiles(q, r, s, this.myPlayer.movesLeft, stealthMode);
                         }
                     });
                     
@@ -3725,6 +3852,22 @@ class GameScene extends Phaser.Scene {
         if (this.starfield1) this.starfield1.setSize(width, height);
         if (this.starfield2) this.starfield2.setSize(width, height);
         if (this.starfield3) this.starfield3.setSize(width, height);
+        
+        // Re-render board and ships with new camera dimensions to fix positioning
+        if (this.lastBoardData) {
+            this.renderBoard(this.lastBoardData);
+            if (this.players) {
+                this.renderShips(this.players);
+                
+                // Re-highlight movement markers if current player has moves
+                const myPlayer = this.players.find(p => p.id === this.socket.id);
+                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship && myPlayer.ship.position) {
+                    const pos = myPlayer.ship.position;
+                    const stealthMode = myPlayer.stealth || false;
+                    this.highlightReachableTiles(pos.q, pos.r, pos.s, myPlayer.movesLeft, stealthMode);
+                }
+            }
+        }
     }
 
     update() {
