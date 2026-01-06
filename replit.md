@@ -45,3 +45,14 @@ npm start
 - Jammer now lets player select target player then choose which cargo to lock
 - Free Port now shows player's own cargo and lets them choose which to deliver
 - Replicator now shows your function cards and lets you select which one to copy
+
+### Planet Market System (January 2026)
+- Each planet now has a market card that determines what cargo can be delivered
+- Markets are dealt from the cargo deck when the game starts
+- Delivery rules: matching color OR type allows delivery
+- Exact match (both color AND type) awards a bonus function card
+- Delivered cargo becomes the new market card for that planet
+- Visual market badges displayed above planets showing current market requirements
+- Cargo cards in the player UI highlight green when deliverable, gold for exact match
+- Wild cards can substitute for missing attributes but require at least one concrete match
+- Socket events: deliverCargo, getMarkets, marketUpdated, cargoDelivered

@@ -953,9 +953,13 @@ io.on('connection', (socket) => {
         const result = game.deliverCargo(socket.id, planetQ, planetR, cargoIndex);
         
         if (result.success) {
-            const planet = game.board.tiles.find(t => 
-                t.type === 'planet' && t.position.q === planetQ && t.position.r === planetR
-            );
+            const planet = game.board.tiles.find(t => {
+                if (t.type !== 'planet') return false;
+                const occupiedPositions = t.occupiedPositions || [t.position];
+                return occupiedPositions.some(pos => 
+                    parseInt(pos.q) === parseInt(planetQ) && parseInt(pos.r) === parseInt(planetR)
+                );
+            });
             
             io.to(gameId).emit('cargoDelivered', {
                 playerId: socket.id,
@@ -967,11 +971,16 @@ io.on('connection', (socket) => {
                 bonusCard: result.bonusCard ? result.bonusCard.name : null
             });
             
-            io.to(gameId).emit('marketUpdated', {
-                planetQ: planetQ,
-                planetR: planetR,
-                market: result.newMarket
-            });
+            if (planet) {
+                const occupiedPositions = planet.occupiedPositions || [planet.position];
+                occupiedPositions.forEach(pos => {
+                    io.to(gameId).emit('marketUpdated', {
+                        planetQ: parseInt(pos.q),
+                        planetR: parseInt(pos.r),
+                        market: result.newMarket
+                    });
+                });
+            }
             
             io.to(gameId).emit('playersUpdate', game.players);
         } else {
@@ -985,13 +994,19 @@ io.on('connection', (socket) => {
         
         if (!game) return;
         
-        const markets = game.board.tiles
+        const markets = [];
+        game.board.tiles
             .filter(t => t.type === 'planet' && t.market)
-            .map(t => ({
-                q: t.position.q,
-                r: t.position.r,
-                market: t.market
-            }));
+            .forEach(t => {
+                const occupiedPositions = t.occupiedPositions || [t.position];
+                occupiedPositions.forEach(pos => {
+                    markets.push({
+                        q: parseInt(pos.q),
+                        r: parseInt(pos.r),
+                        market: t.market
+                    });
+                });
+            });
         
         socket.emit('marketsData', { markets });
     });

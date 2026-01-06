@@ -75,19 +75,41 @@ class Game {
         if (!planet.market) return { valid: false, reason: 'Planet has no market' };
         
         const shipPos = player.ship.position;
-        if (shipPos.q !== planet.position.q || shipPos.r !== planet.position.r) {
+        const occupiedPositions = planet.occupiedPositions || [planet.position];
+        const isOnPlanet = occupiedPositions.some(pos => 
+            parseInt(pos.q) === parseInt(shipPos.q) && parseInt(pos.r) === parseInt(shipPos.r)
+        );
+        if (!isOnPlanet) {
             return { valid: false, reason: 'Player is not on this planet' };
         }
         
         const market = planet.market;
-        const colorMatch = cargoCard.color === market.color || cargoCard.color === 'wild' || market.color === 'wild';
-        const typeMatch = cargoCard.type === market.type || cargoCard.type === 'wild' || market.type === 'wild';
         
-        if (!colorMatch && !typeMatch) {
+        const cargoColorWild = cargoCard.color === 'wild';
+        const cargoTypeWild = cargoCard.type === 'wild';
+        const marketColorWild = market.color === 'wild';
+        const marketTypeWild = market.type === 'wild';
+        
+        const colorExactMatch = cargoCard.color === market.color && !cargoColorWild && !marketColorWild;
+        const typeExactMatch = cargoCard.type === market.type && !cargoTypeWild && !marketTypeWild;
+        
+        const colorMatchViaWild = cargoColorWild || marketColorWild;
+        const typeMatchViaWild = cargoTypeWild || marketTypeWild;
+        
+        const hasColorMatch = colorExactMatch || colorMatchViaWild;
+        const hasTypeMatch = typeExactMatch || typeMatchViaWild;
+        
+        const hasConcreteMatch = colorExactMatch || typeExactMatch;
+        
+        if (!hasConcreteMatch && !hasColorMatch && !hasTypeMatch) {
             return { valid: false, reason: 'Cargo does not match market (need same color OR same type)' };
         }
         
-        const exactMatch = (cargoCard.color === market.color && cargoCard.type === market.type);
+        if (!hasConcreteMatch) {
+            return { valid: false, reason: 'Wild cards require at least one matching attribute' };
+        }
+        
+        const exactMatch = colorExactMatch && typeExactMatch;
         return { valid: true, exactMatch };
     }
     
@@ -95,9 +117,13 @@ class Game {
         const player = this.players.find(p => p.id === playerId);
         if (!player) return { success: false, error: 'Player not found' };
         
-        const planet = this.board.tiles.find(t => 
-            t instanceof Planet && t.position.q === planetQ && t.position.r === planetR
-        );
+        const planet = this.board.tiles.find(t => {
+            if (!(t instanceof Planet)) return false;
+            const occupiedPositions = t.occupiedPositions || [t.position];
+            return occupiedPositions.some(pos => 
+                parseInt(pos.q) === parseInt(planetQ) && parseInt(pos.r) === parseInt(planetR)
+            );
+        });
         if (!planet) return { success: false, error: 'Planet not found' };
         
         const cargoCard = player.cargo[cargoIndex];

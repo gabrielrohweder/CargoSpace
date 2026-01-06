@@ -726,8 +726,28 @@ class UIScene extends Phaser.Scene {
         
         let currentX = (screenWidth - totalWidth) / 2;
 
+        // Check if player is on a planet
+        const gameScene = this.scene.get('GameScene');
+        let isOnPlanet = false;
+        let currentPlanetMarket = null;
+        let playerPlanetQ = null;
+        let playerPlanetR = null;
+        
+        if (player.ship && gameScene && gameScene.tileData && gameScene.planetMarkets) {
+            const { q, r } = player.ship.position;
+            const posKey = `${q},${r}`;
+            
+            if (gameScene.planetMarkets.has(posKey)) {
+                isOnPlanet = true;
+                playerPlanetQ = q;
+                playerPlanetR = r;
+                currentPlanetMarket = gameScene.planetMarkets.get(posKey);
+            }
+        }
+
         // Section Title: Cargo
-        this.currentPlayerGroup.add(this.add.text(currentX, panelY + 20, 'My Cargo', { font: '24px Arial', fill: '#ffffff' }));
+        const cargoTitle = isOnPlanet ? 'My Cargo (Click to Deliver)' : 'My Cargo';
+        this.currentPlayerGroup.add(this.add.text(currentX, panelY + 20, cargoTitle, { font: '24px Arial', fill: isOnPlanet ? '#00ff00' : '#ffffff' }));
         
         // Render Cargo Cards (Larger)
         for (let i = 0; i < 3; i++) {
@@ -739,13 +759,67 @@ class UIScene extends Phaser.Scene {
             this.currentPlayerGroup.add(card);
 
             if (player.cargo[i]) {
-                const c = this.getColorHex(player.cargo[i].color);
+                const cargoCard = player.cargo[i];
+                const c = this.getColorHex(cargoCard.color);
                 card.fillColor = c;
-                const typeText = this.add.text(cardX - 40, cardY - 20, player.cargo[i].type, { font: '16px Arial', fill: '#000000' });
+                const typeText = this.add.text(cardX - 40, cardY - 20, cargoCard.type, { font: '16px Arial', fill: '#000000' });
                 this.currentPlayerGroup.add(typeText);
+                
+                if (cargoCard.locked) {
+                    const lockIcon = this.add.text(cardX, cardY + 40, 'LOCKED', { font: 'bold 12px Arial', fill: '#ff0000' }).setOrigin(0.5);
+                    this.currentPlayerGroup.add(lockIcon);
+                }
+                
+                if (isOnPlanet && !cargoCard.locked && currentPlanetMarket) {
+                    const market = currentPlanetMarket;
+                    const colorMatch = cargoCard.color === market.color || cargoCard.color === 'wild' || market.color === 'wild';
+                    const typeMatch = cargoCard.type === market.type || cargoCard.type === 'wild' || market.type === 'wild';
+                    const canDeliver = colorMatch || typeMatch;
+                    const exactMatch = cargoCard.color === market.color && cargoCard.type === market.type;
+                    
+                    if (canDeliver) {
+                        card.setInteractive();
+                        card.setStrokeStyle(4, exactMatch ? 0xFFD700 : 0x00FF00);
+                        
+                        const deliverText = this.add.text(cardX, cardY + 55, exactMatch ? 'EXACT!' : 'Deliver', { 
+                            font: 'bold 14px Arial', 
+                            fill: exactMatch ? '#FFD700' : '#00FF00' 
+                        }).setOrigin(0.5);
+                        this.currentPlayerGroup.add(deliverText);
+                        
+                        const cargoIndex = i;
+                        card.on('pointerdown', () => {
+                            this.socket.emit('deliverCargo', {
+                                planetQ: playerPlanetQ,
+                                planetR: playerPlanetR,
+                                cargoIndex: cargoIndex
+                            });
+                        });
+                        
+                        card.on('pointerover', () => card.setStrokeStyle(6, 0xFFFFFF));
+                        card.on('pointerout', () => card.setStrokeStyle(4, exactMatch ? 0xFFD700 : 0x00FF00));
+                    }
+                }
             } else {
                 card.fillColor = 0x333333;
             }
+        }
+        
+        if (isOnPlanet && currentPlanetMarket) {
+            const marketInfoX = currentX + cargoSectionWidth / 2;
+            const marketInfoY = panelY + 55;
+            const colorMap = { red: 0xFF0000, blue: 0x0000FF, green: 0x00FF00, yellow: 0xFFFF00, wild: 0xFFFFFF };
+            const marketColor = colorMap[currentPlanetMarket.color] || 0xFFFFFF;
+            
+            const marketBg = this.add.rectangle(marketInfoX, marketInfoY, 200, 30, 0x000000, 0.7);
+            marketBg.setStrokeStyle(2, marketColor);
+            this.currentPlayerGroup.add(marketBg);
+            
+            const marketText = this.add.text(marketInfoX, marketInfoY, `Market: ${currentPlanetMarket.type} / ${currentPlanetMarket.color}`, {
+                font: '14px Arial',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+            this.currentPlayerGroup.add(marketText);
         }
 
         currentX += cargoSectionWidth + sectionSpacing;
@@ -2295,13 +2369,16 @@ class GameScene extends Phaser.Scene {
                 sprite.setRotation(rotation);
                 sprite.setOrigin(0.5, 0.5);
                 
-                const key = `${q},${r}`;
-                this.planetSprites.set(key, { x: sprite.x, y: sprite.y, sprite: sprite, tile: tile });
-                
-                if (tile.market) {
-                    if (!this.planetMarkets) this.planetMarkets = new Map();
-                    this.planetMarkets.set(key, tile.market);
-                }
+                const occupiedPositions = tile.occupiedPositions || [{ q, r }];
+                occupiedPositions.forEach(pos => {
+                    const posKey = `${parseInt(pos.q)},${parseInt(pos.r)}`;
+                    this.planetSprites.set(posKey, { x: sprite.x, y: sprite.y, sprite: sprite, tile: tile });
+                    
+                    if (tile.market) {
+                        if (!this.planetMarkets) this.planetMarkets = new Map();
+                        this.planetMarkets.set(posKey, tile.market);
+                    }
+                });
             }
 
             // The server sends 'occupiedPositions' for planets and multi-cell tiles.
