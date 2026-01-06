@@ -654,23 +654,80 @@ io.on('connection', (socket) => {
                         const rootTarget = game.players.find(p => p.id === data.targetId.targetPlayerId);
                         if (rootTarget && rootTarget.functionCards[data.targetId.selectedCardIndex]) {
                             const rootedCard = rootTarget.functionCards[data.targetId.selectedCardIndex];
-                            const cardTarget = data.targetId.cardTarget ? game.players.find(p => p.id === data.targetId.cardTarget) : null;
+                            const cardTarget = data.targetId.cardTarget ? game.players.find(p => p.id === data.targetId.cardTarget) : player;
                             
                             switch (rootedCard.name) {
                                 case 'Repair Bot':
-                                    if (cardTarget) cardTarget.cargo.forEach(c => c.locked = false);
+                                    cardTarget.cargo.forEach(c => c.locked = false);
                                     break;
                                 case 'Mishap':
-                                    if (cardTarget) cardTarget.cargo.forEach(c => c.locked = true);
+                                    cardTarget.cargo.forEach(c => c.locked = true);
                                     break;
                                 case 'Rebound':
-                                    if (cardTarget && cardTarget.ship) cardTarget.ship.position = { q: 0, r: 0, s: 3 };
+                                    if (cardTarget.ship) cardTarget.ship.position = { q: 0, r: 0, s: 3 };
+                                    break;
+                                case 'Recall':
+                                    if (player.ship) player.ship.position = { q: 0, r: 0, s: 3 };
                                     break;
                                 case 'Delivery':
-                                    if (cardTarget) {
-                                        while (cardTarget.cargo.length < 3 && cardTarget.depot.length > 0) {
-                                            cardTarget.cargo.push(cardTarget.depot.shift());
+                                    while (cardTarget.cargo.length < 3 && cardTarget.depot.length > 0) {
+                                        cardTarget.cargo.push(cardTarget.depot.shift());
+                                    }
+                                    break;
+                                case 'Jettison':
+                                    if (cardTarget.cargo.length > 0) cardTarget.cargo.pop();
+                                    break;
+                                case 'Stealth':
+                                    player.movesLeft = 4;
+                                    player.stealth = true;
+                                    break;
+                                case 'Glitch':
+                                    if (game.functionDeck && game.functionDeck.cards.length > 0) {
+                                        const newCard = game.functionDeck.draw();
+                                        if (newCard) player.functionCards.push(newCard);
+                                    }
+                                    player.movesLeft = 10;
+                                    break;
+                                case 'EMP':
+                                    game.players.forEach(p => {
+                                        if (game.functionDeck) game.functionDeck.cards.push(...p.functionCards);
+                                        p.functionCards = [];
+                                    });
+                                    if (game.functionDeck) game.functionDeck.shuffle();
+                                    break;
+                                case 'Impulse':
+                                    game.players.forEach(p => {
+                                        if (p.functionCards.length > 0) {
+                                            const randomIdx = Math.floor(Math.random() * p.functionCards.length);
+                                            const shuffledCard = p.functionCards.splice(randomIdx, 1)[0];
+                                            if (game.functionDeck) game.functionDeck.cards.push(shuffledCard);
                                         }
+                                    });
+                                    if (game.functionDeck) game.functionDeck.shuffle();
+                                    break;
+                                case 'Hijack':
+                                    if (cardTarget.functionCards.length > 0 && cardTarget !== player) {
+                                        const stolenCard = cardTarget.functionCards.pop();
+                                        player.functionCards.push(stolenCard);
+                                    }
+                                    break;
+                                case 'Upload':
+                                    if (cardTarget.depot.length > 0 && cardTarget !== player) {
+                                        const stolenCargo = cardTarget.depot.shift();
+                                        player.depot.push(stolenCargo);
+                                    }
+                                    break;
+                                case 'Warp':
+                                    const wPlanets = game.board.tiles.filter(t => t.type === 'planet');
+                                    if (wPlanets.length > 0 && cardTarget.ship) {
+                                        const wp = wPlanets[Math.floor(Math.random() * wPlanets.length)];
+                                        cardTarget.ship.position = { q: wp.position.q, r: wp.position.r, s: 3 };
+                                    }
+                                    break;
+                                case 'Jump':
+                                    const jPlanets = game.board.tiles.filter(t => t.type === 'planet');
+                                    if (jPlanets.length > 0 && player.ship) {
+                                        player.ship.position = { q: jPlanets[0].position.q, r: jPlanets[0].position.r, s: 3 };
                                     }
                                     break;
                             }
@@ -686,24 +743,28 @@ io.on('connection', (socket) => {
                 case 'Replicator':
                     if (data.replicateIndex !== undefined && player.functionCards[data.replicateIndex]) {
                         const replicatedCard = player.functionCards[data.replicateIndex];
-                        const repTarget = data.targetId ? game.players.find(p => p.id === data.targetId) : null;
+                        const repTarget = data.targetId ? game.players.find(p => p.id === data.targetId) : player;
                         
                         switch (replicatedCard.name) {
                             case 'Repair Bot':
-                                if (repTarget) repTarget.cargo.forEach(c => c.locked = false);
+                                repTarget.cargo.forEach(c => c.locked = false);
                                 break;
                             case 'Mishap':
-                                if (repTarget) repTarget.cargo.forEach(c => c.locked = true);
+                                repTarget.cargo.forEach(c => c.locked = true);
                                 break;
                             case 'Rebound':
-                                if (repTarget && repTarget.ship) repTarget.ship.position = { q: 0, r: 0, s: 3 };
+                                if (repTarget.ship) repTarget.ship.position = { q: 0, r: 0, s: 3 };
+                                break;
+                            case 'Recall':
+                                if (player.ship) player.ship.position = { q: 0, r: 0, s: 3 };
                                 break;
                             case 'Delivery':
-                                if (repTarget) {
-                                    while (repTarget.cargo.length < 3 && repTarget.depot.length > 0) {
-                                        repTarget.cargo.push(repTarget.depot.shift());
-                                    }
+                                while (repTarget.cargo.length < 3 && repTarget.depot.length > 0) {
+                                    repTarget.cargo.push(repTarget.depot.shift());
                                 }
+                                break;
+                            case 'Jettison':
+                                if (repTarget.cargo.length > 0) repTarget.cargo.pop();
                                 break;
                             case 'Stealth':
                                 player.movesLeft = 4;
@@ -722,6 +783,41 @@ io.on('connection', (socket) => {
                                     p.functionCards = [];
                                 });
                                 if (game.functionDeck) game.functionDeck.shuffle();
+                                break;
+                            case 'Impulse':
+                                game.players.forEach(p => {
+                                    if (p.functionCards.length > 0) {
+                                        const randomIdx = Math.floor(Math.random() * p.functionCards.length);
+                                        const shuffledCard = p.functionCards.splice(randomIdx, 1)[0];
+                                        if (game.functionDeck) game.functionDeck.cards.push(shuffledCard);
+                                    }
+                                });
+                                if (game.functionDeck) game.functionDeck.shuffle();
+                                break;
+                            case 'Hijack':
+                                if (repTarget.functionCards.length > 0 && repTarget !== player) {
+                                    const stolenCard = repTarget.functionCards.pop();
+                                    player.functionCards.push(stolenCard);
+                                }
+                                break;
+                            case 'Upload':
+                                if (repTarget.depot.length > 0 && repTarget !== player) {
+                                    const stolenCargo = repTarget.depot.shift();
+                                    player.depot.push(stolenCargo);
+                                }
+                                break;
+                            case 'Warp':
+                                const rWPlanets = game.board.tiles.filter(t => t.type === 'planet');
+                                if (rWPlanets.length > 0 && repTarget.ship) {
+                                    const rwp = rWPlanets[Math.floor(Math.random() * rWPlanets.length)];
+                                    repTarget.ship.position = { q: rwp.position.q, r: rwp.position.r, s: 3 };
+                                }
+                                break;
+                            case 'Jump':
+                                const rJPlanets = game.board.tiles.filter(t => t.type === 'planet');
+                                if (rJPlanets.length > 0 && player.ship) {
+                                    player.ship.position = { q: rJPlanets[0].position.q, r: rJPlanets[0].position.r, s: 3 };
+                                }
                                 break;
                         }
                         
