@@ -36,3 +36,8 @@ npm start
 ## Recent Changes
 - Configured to run on port 5000 with host 0.0.0.0 for Replit environment
 - Added CORS configuration for Socket.IO to allow all origins
+- Implemented complete function card system with all 24 card types
+- Added visual notification system that displays card effects when played
+- Root and Replicator cards now execute target card effects for major cards
+- Complex cards (Market Shift, Market Regulation, Free Port, Hinder, Data Switch) use auto-selection for playability
+- Fixed movement positioning bugs with correct hub position (s: 3)
