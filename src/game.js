@@ -24,27 +24,29 @@ class Game {
         return player;
     }
 
-    initializePlayer(player) {
+    initializePlayer(player, cardsPerPlayer) {
         player.ship = new Ship();
         
-        if (this.cargoDeck) {
-            // 3 Cargo
-            for(let i=0; i<3; i++) {
+        if (this.cargoDeck && cardsPerPlayer > 0) {
+            // Deal 3 cards to cargo (hand), rest to depot
+            const cargoCards = Math.min(3, cardsPerPlayer);
+            const depotCards = cardsPerPlayer - cargoCards;
+            
+            for (let i = 0; i < cargoCards; i++) {
                 const card = this.cargoDeck.draw();
-                if(card) player.cargo.push(card);
+                if (card) player.cargo.push(card);
             }
-            // 5 Depot cards (dummy count)
-            for(let i=0; i<5; i++) {
+            for (let i = 0; i < depotCards; i++) {
                 const card = this.cargoDeck.draw();
-                if(card) player.depot.push(card);
+                if (card) player.depot.push(card);
             }
         }
         
         // Deal 2 function cards to each player
         if (this.functionDeck) {
-            for(let i=0; i<2; i++) {
+            for (let i = 0; i < 2; i++) {
                 const card = this.functionDeck.draw();
-                if(card) player.functionCards.push(card);
+                if (card) player.functionCards.push(card);
             }
         }
     }
@@ -61,8 +63,22 @@ class Game {
         this.setupMarkets();
         console.log("Markets initialized on planets");
         
-        for (const player of this.players) {
-            this.initializePlayer(player);
+        // Calculate cards per player:
+        // 52 total - 6 for markets - 10 for draw deck = 36 to distribute
+        const totalCargoCards = 52;
+        const marketCards = 6; // Already dealt in setupMarkets()
+        const drawDeckCards = 10;
+        const cardsToDistribute = totalCargoCards - marketCards - drawDeckCards;
+        const numPlayers = this.players.length;
+        const baseCardsPerPlayer = numPlayers > 0 ? Math.floor(cardsToDistribute / numPlayers) : 0;
+        const remainder = numPlayers > 0 ? cardsToDistribute % numPlayers : 0;
+        
+        console.log(`Distributing cargo cards: ${baseCardsPerPlayer} base + ${remainder} remainder cards among ${numPlayers} players`);
+        
+        for (let i = 0; i < this.players.length; i++) {
+            // First 'remainder' players get one extra card
+            const cardsForThisPlayer = baseCardsPerPlayer + (i < remainder ? 1 : 0);
+            this.initializePlayer(this.players[i], cardsForThisPlayer);
         }
         if (this.players.length > 0) {
             this.currentPlayer = this.players[0];

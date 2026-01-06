@@ -76,3 +76,10 @@ npm start
 - Wild market cards accept ANY cargo delivery
 - Partial wilds still work: wild color matches any color, wild type matches any type
 - Exact match bonuses only awarded when both color AND type match without wilds
+
+### Board Generation and Card Distribution (January 2026)
+- Movement tile count now configurable by host via slider (20-100 range, default 50)
+- Board constructor accepts movementTiles parameter and uses it for tile generation
+- Cargo card distribution follows rules: 52 total - 6 for markets - 10 for draw deck = 36 for players
+- Cards distributed evenly with remainder going to first players (e.g., 5 players: 8,7,7,7,7)
+- Each player gets 3 cards in cargo (hand) and rest in depot

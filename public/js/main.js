@@ -166,18 +166,35 @@ class LobbyScene extends Phaser.Scene {
             fill: '#ffffff'
         });
         
+        const tilesContainer = document.createElement('div');
+        tilesContainer.style.position = 'fixed';
+        tilesContainer.style.left = (width / 2) + 'px';
+        tilesContainer.style.top = (height / 2 + yOffset - 15) + 'px';
+        tilesContainer.style.display = 'flex';
+        tilesContainer.style.alignItems = 'center';
+        tilesContainer.style.gap = '10px';
+        
         const tilesInput = document.createElement('input');
-        tilesInput.type = 'number';
-        tilesInput.value = '6';
-        tilesInput.min = '3';
-        tilesInput.max = '12';
-        tilesInput.style.position = 'fixed';
-        tilesInput.style.left = (width / 2) + 'px';
-        tilesInput.style.top = (height / 2 + yOffset - 15) + 'px';
-        tilesInput.style.width = '200px';
-        tilesInput.style.height = '30px';
-        tilesInput.style.fontSize = '16px';
-        document.body.appendChild(tilesInput);
+        tilesInput.type = 'range';
+        tilesInput.value = '50';
+        tilesInput.min = '20';
+        tilesInput.max = '100';
+        tilesInput.style.width = '150px';
+        tilesInput.style.height = '20px';
+        
+        const tilesValue = document.createElement('span');
+        tilesValue.textContent = '50';
+        tilesValue.style.color = '#ffffff';
+        tilesValue.style.fontSize = '16px';
+        tilesValue.style.minWidth = '30px';
+        
+        tilesInput.addEventListener('input', () => {
+            tilesValue.textContent = tilesInput.value;
+        });
+        
+        tilesContainer.appendChild(tilesInput);
+        tilesContainer.appendChild(tilesValue);
+        document.body.appendChild(tilesContainer);
         
         yOffset += 60;
         
@@ -224,7 +241,7 @@ class LobbyScene extends Phaser.Scene {
         createBtn.on('pointerdown', () => {
             const playerName = playerNameInput.value || 'Player';
             const gameName = nameInput.value || 'Unnamed Game';
-            const movementTiles = parseInt(tilesInput.value) || 6;
+            const movementTiles = parseInt(tilesInput.value) || 50;
             const asteroidBelts = asteroidsCheckbox.checked;
             const maxPlayers = parseInt(playersInput.value) || 4;
             
@@ -239,7 +256,7 @@ class LobbyScene extends Phaser.Scene {
             // Clean up HTML inputs
             document.body.removeChild(playerNameInput);
             document.body.removeChild(nameInput);
-            document.body.removeChild(tilesInput);
+            document.body.removeChild(tilesContainer);
             document.body.removeChild(asteroidsCheckbox);
             document.body.removeChild(playersInput);
             
@@ -264,8 +281,9 @@ class LobbyScene extends Phaser.Scene {
         const cancelBtn = this.add.rectangle(0, yOffset + 70, 150, 50, 0xe76f51).setInteractive();
         cancelBtn.on('pointerdown', () => {
             // Clean up HTML inputs
+            document.body.removeChild(playerNameInput);
             document.body.removeChild(nameInput);
-            document.body.removeChild(tilesInput);
+            document.body.removeChild(tilesContainer);
             document.body.removeChild(asteroidsCheckbox);
             document.body.removeChild(playersInput);
             
