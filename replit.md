@@ -56,3 +56,8 @@ npm start
 - Cargo cards in the player UI highlight green when deliverable, gold for exact match
 - Wild cards can substitute for missing attributes but require at least one concrete match
 - Socket events: deliverCargo, getMarkets, marketUpdated, cargoDelivered
+
+### Hub Arrival Mechanics (January 2026)
+- When a player ends their turn on the hub, they refill cargo slots from their depot (up to 3 cards)
+- If they had NO cargo when ending on the hub, they also receive a bonus function card
+- hubArrival socket event notifies all players of the refill with visual notification
