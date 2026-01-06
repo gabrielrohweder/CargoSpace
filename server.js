@@ -337,6 +337,25 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('requestTargetCargo', (data) => {
+        console.log('requestTargetCargo received:', data);
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        
+        if (!game) return;
+        
+        const targetPlayer = game.players.find(p => p.id === data.targetId);
+        if (targetPlayer) {
+            socket.emit('targetCargo', {
+                targetId: data.targetId,
+                targetName: targetPlayer.name,
+                cargo: targetPlayer.cargo,
+                cardIndex: data.cardIndex,
+                cardName: data.cardName
+            });
+        }
+    });
+
     socket.on('playFunctionCard', (data) => {
         console.log('playFunctionCard received:', data);
         const gameId = playerToGame.get(socket.id);
@@ -544,12 +563,23 @@ io.on('connection', (socket) => {
                     break;
                     
                 case 'Jammer':
-                    game.players.forEach(p => {
-                        if (p.cargo.length > 0) {
-                            p.cargo[0].locked = true;
+                    {
+                        const jamTarget = data.targetId ? game.players.find(p => p.id === data.targetId) : null;
+                        if (jamTarget && data.cargoIndex !== undefined && jamTarget.cargo[data.cargoIndex]) {
+                            jamTarget.cargo[data.cargoIndex].locked = true;
+                            effectMessage = `Locked ${jamTarget.name}'s cargo`;
+                        } else if (jamTarget && jamTarget.cargo.length > 0) {
+                            const unlocked = jamTarget.cargo.find(c => !c.locked);
+                            if (unlocked) {
+                                unlocked.locked = true;
+                                effectMessage = `Locked ${jamTarget.name}'s cargo`;
+                            } else {
+                                effectMessage = `${jamTarget.name} has no unlocked cargo`;
+                            }
+                        } else {
+                            effectMessage = 'No target or cargo to lock';
                         }
-                    });
-                    effectMessage = 'Locked one cargo for each player';
+                    }
                     break;
                     
                 case 'Market Shift':
@@ -596,19 +626,22 @@ io.on('connection', (socket) => {
                     
                 case 'Free Port':
                     {
-                        const cargoIdx = data.cargoIndex !== undefined ? data.cargoIndex : 0;
-                        if (player.cargo[cargoIdx] && !player.cargo[cargoIdx].locked) {
-                            const cargoCard = player.cargo.splice(cargoIdx, 1)[0];
-                            if (game.discardPile) {
-                                game.discardPile.add(cargoCard);
+                        if (data.cargoIndex !== undefined && player.cargo[data.cargoIndex]) {
+                            if (!player.cargo[data.cargoIndex].locked) {
+                                const cargoCard = player.cargo.splice(data.cargoIndex, 1)[0];
+                                if (game.discardPile) {
+                                    game.discardPile.add(cargoCard);
+                                }
+                                effectMessage = `Delivered ${cargoCard.name || 'cargo'} via Free Port`;
+                            } else {
+                                effectMessage = 'Selected cargo is locked';
                             }
-                            effectMessage = 'Delivered cargo via Free Port';
                         } else if (player.cargo.length > 0) {
                             const unlocked = player.cargo.findIndex(c => !c.locked);
                             if (unlocked >= 0) {
                                 const cargoCard = player.cargo.splice(unlocked, 1)[0];
                                 if (game.discardPile) game.discardPile.add(cargoCard);
-                                effectMessage = 'Delivered cargo via Free Port';
+                                effectMessage = `Delivered ${cargoCard.name || 'cargo'} via Free Port`;
                             } else {
                                 effectMessage = 'All cargo is locked';
                             }

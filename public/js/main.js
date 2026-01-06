@@ -473,6 +473,18 @@ class UIScene extends Phaser.Scene {
             this.showRootCardSelectionPopup(data);
         });
 
+        this.socket.on('targetCargo', (data) => {
+            console.log('Received target cargo:', data);
+            this.showCargoSelectionDialog({
+                title: `Select cargo to lock on ${data.targetName}`,
+                cargo: data.cargo,
+                targetPlayerId: data.targetId,
+                cardIndex: data.cardIndex,
+                cardName: data.cardName,
+                allowLocked: false
+            });
+        });
+
         this.socket.on('functionCardPlayed', (data) => {
             console.log('Function card played:', data);
             this.showFunctionCardNotification(data);
@@ -1012,6 +1024,34 @@ class UIScene extends Phaser.Scene {
                     if (card.requiresTarget) {
                         // Show player selection dialog
                         this.showPlayerSelectionDialog(card, index);
+                    } else if (card.name === 'Free Port') {
+                        // Free Port needs cargo selection from own cargo
+                        if (this.turnPopup) {
+                            this.turnPopup.setVisible(false);
+                            try {
+                                if (this.turnPopup.list) {
+                                    this.turnPopup.list.forEach(child => {
+                                        try { child.destroy(); } catch (e) {}
+                                    });
+                                }
+                                this.turnPopup.destroy();
+                            } catch (e) {}
+                            this.turnPopup = null;
+                        }
+                        const gameScene = this.scene.get('GameScene');
+                        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.id === this.socket.id) : null;
+                        if (myPlayer && myPlayer.cargo && myPlayer.cargo.length > 0) {
+                            this.showCargoSelectionDialog({
+                                title: 'Select cargo to deliver via Free Port',
+                                cargo: myPlayer.cargo,
+                                targetPlayerId: this.socket.id,
+                                cardIndex: index,
+                                cardName: card.name,
+                                allowLocked: false
+                            });
+                        } else {
+                            this.socket.emit('playFunctionCard', { cardIndex: index, targetId: null });
+                        }
                     } else {
                         // Play the card immediately without target
                         if (this.turnPopup) {
@@ -1134,6 +1174,13 @@ class UIScene extends Phaser.Scene {
                         targetId: player.id,
                         rootCardIndex: cardIndex 
                     });
+                } else if (card.name === 'Jammer') {
+                    // Request target player's cargo for Jammer
+                    this.socket.emit('requestTargetCargo', {
+                        targetId: player.id,
+                        cardIndex: cardIndex,
+                        cardName: card.name
+                    });
                 } else {
                     // Play the card with the selected target
                     this.socket.emit('playFunctionCard', { cardIndex: cardIndex, targetId: player.id });
@@ -1170,6 +1217,113 @@ class UIScene extends Phaser.Scene {
         
         this.playerSelectionPopup.add(elements);
         this.playerSelectionPopup.setDepth(6000);
+    }
+
+    showCargoSelectionDialog(options) {
+        const { title, cargo, targetPlayerId, cardIndex, cardName, onSelect, allowLocked = true } = options;
+        
+        if (this.cargoSelectionPopup) {
+            this.cargoSelectionPopup.destroy();
+            this.cargoSelectionPopup = null;
+        }
+        
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        this.cargoSelectionPopup = this.add.container(centerX, centerY);
+        
+        const popupHeight = Math.max(300, 150 + cargo.length * 70);
+        const bg = this.add.rectangle(0, 0, 450, popupHeight, 0x000000, 0.95);
+        bg.setStrokeStyle(4, 0x00AAFF);
+        
+        const titleText = this.add.text(0, -popupHeight/2 + 30, title, {
+            font: 'bold 24px Arial',
+            fill: '#00AAFF'
+        }).setOrigin(0.5);
+        
+        const elements = [bg, titleText];
+        
+        if (cargo.length === 0) {
+            const noCargoText = this.add.text(0, 0, 'No cargo available', {
+                font: '18px Arial',
+                fill: '#888888'
+            }).setOrigin(0.5);
+            elements.push(noCargoText);
+        } else {
+            const cardWidth = 380;
+            const cardHeight = 50;
+            const startY = -popupHeight/2 + 80;
+            const spacing = 10;
+            
+            cargo.forEach((cargoCard, index) => {
+                const cardY = startY + index * (cardHeight + spacing);
+                const isLocked = cargoCard.locked;
+                const isSelectable = allowLocked || !isLocked;
+                const cardColor = isLocked ? 0x664444 : 0x446644;
+                
+                const cargoRect = this.add.rectangle(0, cardY, cardWidth, cardHeight, cardColor);
+                if (isSelectable) {
+                    cargoRect.setInteractive();
+                }
+                cargoRect.setStrokeStyle(2, isLocked ? 0xFF4444 : 0x44FF44);
+                
+                const cargoName = cargoCard.name || cargoCard.type || `Cargo ${index + 1}`;
+                const lockStatus = isLocked ? ' [LOCKED]' : '';
+                const cargoText = this.add.text(0, cardY, `${cargoName}${lockStatus}`, {
+                    font: '16px Arial',
+                    fill: isSelectable ? '#ffffff' : '#888888'
+                }).setOrigin(0.5);
+                
+                if (isSelectable) {
+                    cargoRect.on('pointerdown', () => {
+                        console.log('Cargo selected:', index, 'targetPlayerId:', targetPlayerId, 'cardIndex:', cardIndex);
+                        if (this.cargoSelectionPopup) {
+                            this.cargoSelectionPopup.destroy();
+                            this.cargoSelectionPopup = null;
+                        }
+                        if (onSelect) {
+                            onSelect(index, cargoCard);
+                        } else {
+                            console.log('Emitting playFunctionCard with targetId:', targetPlayerId, 'cargoIndex:', index);
+                            this.socket.emit('playFunctionCard', {
+                                cardIndex: cardIndex,
+                                targetId: targetPlayerId,
+                                cargoIndex: index
+                            });
+                        }
+                    });
+                    
+                    cargoRect.on('pointerover', () => cargoRect.fillColor = isLocked ? 0x885555 : 0x558855);
+                    cargoRect.on('pointerout', () => cargoRect.fillColor = cardColor);
+                }
+                
+                elements.push(cargoRect, cargoText);
+            });
+        }
+        
+        const cancelY = popupHeight/2 - 40;
+        const cancelBtn = this.add.rectangle(0, cancelY, 150, 40, 0x884444).setInteractive();
+        cancelBtn.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, cancelY, 'Cancel', {
+            font: '18px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        cancelBtn.on('pointerdown', () => {
+            if (this.cargoSelectionPopup) {
+                this.cargoSelectionPopup.destroy();
+                this.cargoSelectionPopup = null;
+            }
+            this.showYourTurnPopup();
+        });
+        
+        cancelBtn.on('pointerover', () => cancelBtn.fillColor = 0xAA6666);
+        cancelBtn.on('pointerout', () => cancelBtn.fillColor = 0x884444);
+        
+        elements.push(cancelBtn, cancelText);
+        
+        this.cargoSelectionPopup.add(elements);
+        this.cargoSelectionPopup.setDepth(7000);
     }
 
     showTurnIndicator(playerName) {
