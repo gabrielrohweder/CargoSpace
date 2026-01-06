@@ -383,18 +383,19 @@ io.on('connection', (socket) => {
                     
                 case 'Rebound':
                     if (targetPlayer && targetPlayer.ship) {
-                        targetPlayer.ship.position = { q: 0, r: 0, s: 0 };
+                        targetPlayer.ship.position = { q: 0, r: 0, s: 3 };
                         effectMessage = `${targetPlayer.name} returned to the hub`;
                     }
                     break;
                     
                 case 'Recall':
                     if (targetPlayer && targetPlayer.ship) {
-                        targetPlayer.ship.position = { q: 0, r: 0, s: 0 };
+                        targetPlayer.ship.position = { q: 0, r: 0, s: 3 };
                         // Fill empty cargo slots from depot
                         while (targetPlayer.cargo.length < 3 && targetPlayer.depot.length > 0) {
                             targetPlayer.cargo.push(targetPlayer.depot.shift());
                         }
+                        targetPlayer.recalled = true;
                         effectMessage = `${targetPlayer.name} sent to Hub and cargo filled`;
                     }
                     break;
@@ -402,6 +403,10 @@ io.on('connection', (socket) => {
                 case 'Impulse':
                     if (targetPlayer) {
                         const cardCount = targetPlayer.functionCards.length;
+                        if (game.functionDeck) {
+                            game.functionDeck.cards.push(...targetPlayer.functionCards);
+                            game.functionDeck.shuffle();
+                        }
                         targetPlayer.functionCards = [];
                         effectMessage = `${targetPlayer.name} shuffled ${cardCount} function cards back into deck`;
                     }
@@ -466,13 +471,48 @@ io.on('connection', (socket) => {
                     break;
                     
                 case 'Warp':
-                    // Implement when planet system is ready
-                    effectMessage = 'Warp effect not yet implemented';
+                    if (targetPlayer && targetPlayer.ship) {
+                        const planets = game.board.tiles.filter(t => t.type === 'planet');
+                        if (planets.length > 0) {
+                            const randomPlanet = planets[Math.floor(Math.random() * planets.length)];
+                            targetPlayer.ship.position = { 
+                                q: randomPlanet.position.q, 
+                                r: randomPlanet.position.r, 
+                                s: 3 
+                            };
+                            effectMessage = `${targetPlayer.name} warped to a random planet`;
+                        } else {
+                            effectMessage = 'No planets available for warping';
+                        }
+                    }
                     break;
                     
                 case 'Jump':
-                    // Implement when planet system is ready
-                    effectMessage = 'Jump effect not yet implemented';
+                    if (targetPlayer && targetPlayer.ship && data.planetId !== undefined) {
+                        const planet = game.board.tiles.find(t => t.type === 'planet' && t.id === data.planetId);
+                        if (planet) {
+                            targetPlayer.ship.position = { 
+                                q: planet.position.q, 
+                                r: planet.position.r, 
+                                s: 3 
+                            };
+                            effectMessage = `${targetPlayer.name} jumped to ${planet.name || 'a planet'}`;
+                        } else {
+                            effectMessage = 'Planet not found';
+                        }
+                    } else if (targetPlayer && targetPlayer.ship) {
+                        // Fallback to random planet if no planet selected
+                        const planets = game.board.tiles.filter(t => t.type === 'planet');
+                        if (planets.length > 0) {
+                            const randomPlanet = planets[Math.floor(Math.random() * planets.length)];
+                            targetPlayer.ship.position = { 
+                                q: randomPlanet.position.q, 
+                                r: randomPlanet.position.r, 
+                                s: 3 
+                            };
+                            effectMessage = `${targetPlayer.name} jumped to a planet`;
+                        }
+                    }
                     break;
                     
                 case 'Stealth':
@@ -492,8 +532,14 @@ io.on('connection', (socket) => {
                     
                 case 'EMP':
                     game.players.forEach(p => {
+                        if (game.functionDeck) {
+                            game.functionDeck.cards.push(...p.functionCards);
+                        }
                         p.functionCards = [];
                     });
+                    if (game.functionDeck) {
+                        game.functionDeck.shuffle();
+                    }
                     effectMessage = 'All players shuffled function cards back into deck';
                     break;
                     
@@ -504,6 +550,185 @@ io.on('connection', (socket) => {
                         }
                     });
                     effectMessage = 'Locked one cargo for each player';
+                    break;
+                    
+                case 'Market Shift':
+                    {
+                        const planets = game.board.tiles.filter(t => t.type === 'planet');
+                        const planetIndex = data.planetIndex !== undefined ? data.planetIndex : Math.floor(Math.random() * planets.length);
+                        const planet = planets[planetIndex];
+                        if (planet && game.discardPile && game.discardPile.cards.length > 0) {
+                            const newMarket = game.discardPile.draw();
+                            if (planet.market) {
+                                game.discardPile.add(planet.market);
+                            }
+                            planet.market = newMarket;
+                            effectMessage = `Changed market on a planet`;
+                        } else if (planet) {
+                            effectMessage = 'No cards in discard pile to shift market';
+                        } else {
+                            effectMessage = 'No planets available';
+                        }
+                    }
+                    break;
+                    
+                case 'Market Regulation':
+                    {
+                        const planets = game.board.tiles.filter(t => t.type === 'planet');
+                        if (planets.length >= 2) {
+                            const idx1 = data.planet1Index !== undefined ? data.planet1Index : 0;
+                            const idx2 = data.planet2Index !== undefined ? data.planet2Index : 1;
+                            const planet1 = planets[idx1];
+                            const planet2 = planets[idx2];
+                            if (planet1 && planet2 && planet1.market && planet2.market) {
+                                const temp = planet1.market;
+                                planet1.market = planet2.market;
+                                planet2.market = temp;
+                                effectMessage = `Swapped markets between two planets`;
+                            } else {
+                                effectMessage = 'Planets do not have markets to swap';
+                            }
+                        } else {
+                            effectMessage = 'Not enough planets to swap markets';
+                        }
+                    }
+                    break;
+                    
+                case 'Free Port':
+                    {
+                        const cargoIdx = data.cargoIndex !== undefined ? data.cargoIndex : 0;
+                        if (player.cargo[cargoIdx] && !player.cargo[cargoIdx].locked) {
+                            const cargoCard = player.cargo.splice(cargoIdx, 1)[0];
+                            if (game.discardPile) {
+                                game.discardPile.add(cargoCard);
+                            }
+                            effectMessage = 'Delivered cargo via Free Port';
+                        } else if (player.cargo.length > 0) {
+                            const unlocked = player.cargo.findIndex(c => !c.locked);
+                            if (unlocked >= 0) {
+                                const cargoCard = player.cargo.splice(unlocked, 1)[0];
+                                if (game.discardPile) game.discardPile.add(cargoCard);
+                                effectMessage = 'Delivered cargo via Free Port';
+                            } else {
+                                effectMessage = 'All cargo is locked';
+                            }
+                        } else {
+                            effectMessage = 'No cargo to deliver';
+                        }
+                    }
+                    break;
+                    
+                case 'Hinder':
+                    {
+                        const movementTiles = game.board.tiles.filter(t => t.type === 'movement');
+                        if (movementTiles.length > 0) {
+                            const randomTile = movementTiles[Math.floor(Math.random() * movementTiles.length)];
+                            randomTile.type = 'black_hole';
+                            effectMessage = `Placed black hole on the board`;
+                        } else {
+                            effectMessage = 'No valid tiles for black hole';
+                        }
+                    }
+                    break;
+                    
+                case 'Data Switch':
+                    {
+                        const playersWithCargo = game.players.filter(p => p.cargo.length > 0);
+                        if (playersWithCargo.length >= 2) {
+                            const p1 = playersWithCargo[0];
+                            const p2 = playersWithCargo[1];
+                            if (p1.cargo[0] && p2.cargo[0]) {
+                                const temp = p1.cargo[0];
+                                p1.cargo[0] = p2.cargo[0];
+                                p2.cargo[0] = temp;
+                                effectMessage = `Switched cargo between ${p1.name} and ${p2.name}`;
+                            }
+                        } else {
+                            effectMessage = 'Not enough players with cargo to switch';
+                        }
+                    }
+                    break;
+                    
+                case 'Root':
+                    if (data.targetId && data.targetId.targetPlayerId && data.targetId.selectedCardIndex !== undefined) {
+                        const rootTarget = game.players.find(p => p.id === data.targetId.targetPlayerId);
+                        if (rootTarget && rootTarget.functionCards[data.targetId.selectedCardIndex]) {
+                            const rootedCard = rootTarget.functionCards[data.targetId.selectedCardIndex];
+                            const cardTarget = data.targetId.cardTarget ? game.players.find(p => p.id === data.targetId.cardTarget) : null;
+                            
+                            switch (rootedCard.name) {
+                                case 'Repair Bot':
+                                    if (cardTarget) cardTarget.cargo.forEach(c => c.locked = false);
+                                    break;
+                                case 'Mishap':
+                                    if (cardTarget) cardTarget.cargo.forEach(c => c.locked = true);
+                                    break;
+                                case 'Rebound':
+                                    if (cardTarget && cardTarget.ship) cardTarget.ship.position = { q: 0, r: 0, s: 3 };
+                                    break;
+                                case 'Delivery':
+                                    if (cardTarget) {
+                                        while (cardTarget.cargo.length < 3 && cardTarget.depot.length > 0) {
+                                            cardTarget.cargo.push(cardTarget.depot.shift());
+                                        }
+                                    }
+                                    break;
+                            }
+                            
+                            rootTarget.functionCards.splice(data.targetId.selectedCardIndex, 1);
+                            effectMessage = `Used Root to play ${rootedCard.name} from ${rootTarget.name}'s hand`;
+                        }
+                    } else {
+                        effectMessage = 'Root requires target player and card selection';
+                    }
+                    break;
+                    
+                case 'Replicator':
+                    if (data.replicateIndex !== undefined && player.functionCards[data.replicateIndex]) {
+                        const replicatedCard = player.functionCards[data.replicateIndex];
+                        const repTarget = data.targetId ? game.players.find(p => p.id === data.targetId) : null;
+                        
+                        switch (replicatedCard.name) {
+                            case 'Repair Bot':
+                                if (repTarget) repTarget.cargo.forEach(c => c.locked = false);
+                                break;
+                            case 'Mishap':
+                                if (repTarget) repTarget.cargo.forEach(c => c.locked = true);
+                                break;
+                            case 'Rebound':
+                                if (repTarget && repTarget.ship) repTarget.ship.position = { q: 0, r: 0, s: 3 };
+                                break;
+                            case 'Delivery':
+                                if (repTarget) {
+                                    while (repTarget.cargo.length < 3 && repTarget.depot.length > 0) {
+                                        repTarget.cargo.push(repTarget.depot.shift());
+                                    }
+                                }
+                                break;
+                            case 'Stealth':
+                                player.movesLeft = 4;
+                                player.stealth = true;
+                                break;
+                            case 'Glitch':
+                                if (game.functionDeck && game.functionDeck.cards.length > 0) {
+                                    const newCard = game.functionDeck.draw();
+                                    if (newCard) player.functionCards.push(newCard);
+                                }
+                                player.movesLeft = 10;
+                                break;
+                            case 'EMP':
+                                game.players.forEach(p => {
+                                    if (game.functionDeck) game.functionDeck.cards.push(...p.functionCards);
+                                    p.functionCards = [];
+                                });
+                                if (game.functionDeck) game.functionDeck.shuffle();
+                                break;
+                        }
+                        
+                        effectMessage = `Replicated ${replicatedCard.name}`;
+                    } else {
+                        effectMessage = 'Replicator requires card selection';
+                    }
                     break;
                     
                 default:

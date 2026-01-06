@@ -473,6 +473,11 @@ class UIScene extends Phaser.Scene {
             this.showRootCardSelectionPopup(data);
         });
 
+        this.socket.on('functionCardPlayed', (data) => {
+            console.log('Function card played:', data);
+            this.showFunctionCardNotification(data);
+        });
+
         this.scale.on('resize', this.resize, this);
     }
 
@@ -496,6 +501,40 @@ class UIScene extends Phaser.Scene {
             ease: 'Power2',
             onComplete: () => {
                 text.destroy();
+            }
+        });
+    }
+
+    showFunctionCardNotification(data) {
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2 - 50;
+        
+        const container = this.add.container(centerX, centerY).setDepth(3000);
+        
+        const bg = this.add.rectangle(0, 0, 500, 120, 0x000000, 0.9);
+        bg.setStrokeStyle(3, 0xAA00AA);
+        
+        const titleText = this.add.text(0, -30, `${data.playerName} played ${data.cardName}`, {
+            font: 'bold 24px Arial',
+            fill: '#AA00AA'
+        }).setOrigin(0.5);
+        
+        const effectText = this.add.text(0, 15, data.effectMessage, {
+            font: '18px Arial',
+            fill: '#ffffff',
+            wordWrap: { width: 450 }
+        }).setOrigin(0.5);
+        
+        container.add([bg, titleText, effectText]);
+        
+        this.tweens.add({
+            targets: container,
+            y: centerY - 80,
+            alpha: 0,
+            duration: 3000,
+            ease: 'Power2',
+            onComplete: () => {
+                container.destroy();
             }
         });
     }
