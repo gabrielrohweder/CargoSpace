@@ -5,9 +5,15 @@ const Game = require('./src/game');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIO(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
+const host = '0.0.0.0';
 
 app.use(express.static('public'));
 
@@ -577,6 +583,6 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port} (v2)`);
+server.listen(port, host, () => {
+    console.log(`Server is running on http://${host}:${port} (v2)`);
 });
