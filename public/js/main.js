@@ -2695,31 +2695,54 @@ class GameScene extends Phaser.Scene {
                     sprite.destroy();
                 }
             } else {
-                // Non-movement tiles: register ALL occupied positions in tileData for pathfinding
-                // This allows movement tiles adjacent to any hex of the tile to find it
+                // Non-movement tiles: register positions in tileData for pathfinding
                 const firstPos = positions[0];
                 const pq = parseInt(firstPos.q);
                 const pr = parseInt(firstPos.r);
                 
-                // Register EVERY occupied position in tileData so neighbors can find this tile
-                positions.forEach(pos => {
-                    const posQ = parseInt(pos.q);
-                    const posR = parseInt(pos.r);
-                    const key = `${posQ},${posR},3`;
-                    this.tileData.set(key, {
+                // For hub: only register ONE canonical center position (0,0) for movement destination
+                // For planets and other tiles: register all positions
+                if (tile.type === 'hub') {
+                    // Hub uses single central position for movement marker
+                    const hubCenterKey = `0,0,3`;
+                    this.tileData.set(hubCenterKey, {
                         type: tile.type,
                         sprite: sprite,
                         defaultTint: tint,
-                        q: posQ, r: posR, s: 3,
-                        occupiedPositions: positions  // Store all hex positions for neighbor discovery
+                        q: 0, r: 0, s: 3,
+                        occupiedPositions: positions
                     });
                     
-                    // Register all sub-positions in spriteKeyMap
-                    for (let s = 0; s < 3; s++) {
-                        const posKey = `${posQ},${posR},${s}`;
-                        this.registerTileKey(sprite, posKey);
-                    }
-                });
+                    // Register ALL positions in spriteKeyMap for neighbor discovery
+                    positions.forEach(pos => {
+                        const posQ = parseInt(pos.q);
+                        const posR = parseInt(pos.r);
+                        for (let s = 0; s <= 3; s++) {
+                            const posKey = `${posQ},${posR},${s}`;
+                            this.registerTileKey(sprite, posKey);
+                        }
+                    });
+                } else {
+                    // For planets and other non-movement tiles: register ALL positions
+                    positions.forEach(pos => {
+                        const posQ = parseInt(pos.q);
+                        const posR = parseInt(pos.r);
+                        const key = `${posQ},${posR},3`;
+                        this.tileData.set(key, {
+                            type: tile.type,
+                            sprite: sprite,
+                            defaultTint: tint,
+                            q: posQ, r: posR, s: 3,
+                            occupiedPositions: positions
+                        });
+                        
+                        // Register all sub-positions in spriteKeyMap
+                        for (let s = 0; s < 3; s++) {
+                            const posKey = `${posQ},${posR},${s}`;
+                            this.registerTileKey(sprite, posKey);
+                        }
+                    });
+                }
 
                 // Add debug hover/click handlers to the sprite
                 if (sprite.setInteractive) {
@@ -3124,7 +3147,8 @@ class GameScene extends Phaser.Scene {
 
                         const occupancyKey = destTile.type === 'movement' ? destKey : `${destTile.q},${destTile.r},3`;
                         const blocked = destTile.type === 'asteroid_belt' || destTile.type === 'black_hole';
-                        if (blocked || occupiedTiles.has(occupancyKey)) {
+                        const destAllowsMultiple = destTile.type === 'hub' || destTile.type === 'planet';
+                        if (blocked || (!destAllowsMultiple && occupiedTiles.has(occupancyKey))) {
                             return;
                         }
 
@@ -3156,6 +3180,22 @@ class GameScene extends Phaser.Scene {
                     neighborS = 3;
                     key = `${neighbor.q},${neighbor.r},${neighborS}`;
                     tile = this.tileData.get(key);
+                }
+
+                // Check if this position is part of the hub (hub only has one entry at 0,0,3)
+                if (!tile) {
+                    const checkKey = `${neighbor.q},${neighbor.r},3`;
+                    for (const [sprite, keys] of this.spriteKeyMap.entries()) {
+                        if (keys.has(checkKey)) {
+                            const hubTile = this.tileData.get('0,0,3');
+                            if (hubTile && hubTile.type === 'hub') {
+                                tile = hubTile;
+                                key = '0,0,3';
+                                neighborS = 3;
+                            }
+                            break;
+                        }
+                    }
                 }
 
                 if (!tile) {
@@ -3216,7 +3256,8 @@ class GameScene extends Phaser.Scene {
 
                 const occupancyKey = tile.type === 'movement' ? key : `${tile.q},${tile.r},3`;
                 const isBlocked = tile.type === 'asteroid_belt' || tile.type === 'black_hole';
-                const isOccupied = occupiedTiles.has(occupancyKey);
+                const allowsMultiplePlayers = tile.type === 'hub' || tile.type === 'planet';
+                const isOccupied = !allowsMultiplePlayers && occupiedTiles.has(occupancyKey);
 
                 if (isBlocked || isOccupied) {
                     continue;
@@ -3238,7 +3279,8 @@ class GameScene extends Phaser.Scene {
 
                                 const destOccupancyKey = destTile.type === 'movement' ? destKey : `${destTile.q},${destTile.r},3`;
                                 const blocked = destTile.type === 'asteroid_belt' || destTile.type === 'black_hole';
-                                if (blocked || occupiedTiles.has(destOccupancyKey)) {
+                                const destAllowsMultiple = destTile.type === 'hub' || destTile.type === 'planet';
+                                if (blocked || (!destAllowsMultiple && occupiedTiles.has(destOccupancyKey))) {
                                     return;
                                 }
 

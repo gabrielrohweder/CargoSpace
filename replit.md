@@ -64,4 +64,9 @@ npm start
 
 ### Function Card Updates (January 2026)
 - Market Regulation: Shows a popup where player selects two planets to swap their markets
-- All occupied positions of hub and planets are now registered for proper movement pathfinding
+
+### Movement System Updates (January 2026)
+- Hub now has only one central movement marker (instead of one per hex)
+- Hub and planet tiles allow multiple players to land simultaneously
+- All other tiles (movement, teleportation, etc.) only allow one player at a time
+- All occupied positions properly registered for pathfinding
