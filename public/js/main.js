@@ -412,6 +412,7 @@ class UIScene extends Phaser.Scene {
         this.bottomPanelGraphics.fillRect(0, bottomPanelY, this.cameras.main.width, bottomPanelHeight);
 
         this.createDiceDisplay();
+        this.createDebugButton();
 
         // Set up socket listeners
         this.setupSocketListeners();
@@ -459,7 +460,15 @@ class UIScene extends Phaser.Scene {
         });
 
         this.socket.on('phaseChanged', (data) => {
+            console.log('[PHASE DEBUG] Phase changed to:', data.phase);
             this.turnPhase = data.phase;
+            
+            // Clear movement markers when phase changes to 'roll'
+            if (data.phase === 'roll') {
+                console.log('[PHASE DEBUG] Clearing highlights due to roll phase');
+                this.clearHighlights();
+            }
+            
             // Destroy popup when phase changes away from 'roll'
             if (data.phase !== 'roll' && this.turnPopup) {
                 console.log('Phase changed to', data.phase, '- destroying popup');
@@ -612,6 +621,177 @@ class UIScene extends Phaser.Scene {
         this.diceContainer.add([this.diceBackground, this.diceTitleText, this.diceTotalText, spriteLeft, spriteRight]);
         this.diceContainer.setVisible(false);
         this.positionDiceDisplay();
+    }
+
+    createDebugButton() {
+        const btnWidth = 100;
+        const btnHeight = 40;
+        const margin = 20;
+        
+        const debugBtn = this.add.rectangle(margin + btnWidth / 2, margin + btnHeight / 2, btnWidth, btnHeight, 0xff0000, 0.8);
+        debugBtn.setStrokeStyle(2, 0xffffff);
+        debugBtn.setInteractive();
+        debugBtn.setScrollFactor(0);
+        debugBtn.setDepth(1000);
+        
+        const debugText = this.add.text(margin + btnWidth / 2, margin + btnHeight / 2, 'DEBUG', {
+            font: 'bold 16px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        debugText.setScrollFactor(0);
+        debugText.setDepth(1001);
+        
+        debugBtn.on('pointerover', () => {
+            debugBtn.setFillStyle(0xff3333, 1);
+        });
+        
+        debugBtn.on('pointerout', () => {
+            debugBtn.setFillStyle(0xff0000, 0.8);
+        });
+        
+        debugBtn.on('pointerdown', () => {
+            this.showDebugPanel();
+        });
+        
+        this.debugButton = debugBtn;
+        this.debugButtonText = debugText;
+    }
+
+    showDebugPanel() {
+        if (this.debugPanel) {
+            return; // Panel already open
+        }
+        
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        const panelWidth = Math.min(900, width - 100);
+        const panelHeight = Math.min(700, height - 100);
+        
+        this.debugPanel = this.add.container(width / 2, height / 2);
+        this.debugPanel.setScrollFactor(0);
+        this.debugPanel.setDepth(4000);
+        
+        // Background overlay
+        const overlay = this.add.rectangle(0, 0, width * 2, height * 2, 0x000000, 0.7);
+        overlay.setInteractive();
+        
+        // Panel background
+        const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x1a1a2e);
+        panelBg.setStrokeStyle(4, 0xffffff);
+        
+        // Title
+        const title = this.add.text(0, -panelHeight / 2 + 30, 'Debug: Add Function Cards', {
+            font: 'bold 32px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        // Close button
+        const closeBtn = this.add.rectangle(panelWidth / 2 - 40, -panelHeight / 2 + 30, 60, 40, 0xff0000);
+        closeBtn.setInteractive();
+        closeBtn.on('pointerdown', () => {
+            this.debugPanel.destroy();
+            this.debugPanel = null;
+        });
+        closeBtn.on('pointerover', () => closeBtn.setFillStyle(0xff3333));
+        closeBtn.on('pointerout', () => closeBtn.setFillStyle(0xff0000));
+        
+        const closeText = this.add.text(panelWidth / 2 - 40, -panelHeight / 2 + 30, 'X', {
+            font: 'bold 24px Arial',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        this.debugPanel.add([overlay, panelBg, title, closeBtn, closeText]);
+        
+        // All function cards with descriptions
+        const functionCards = [
+            { name: 'Repair Bot', description: 'Unlock target player\'s cargo' },
+            { name: 'Mishap', description: 'Lock out target player\'s cargo' },
+            { name: 'Rebound', description: 'Target player returns to the hub' },
+            { name: 'Market Shift', description: 'Change market of any planet with top discard card' },
+            { name: 'Hijack', description: 'Take cargo from player & lock their remaining cargo' },
+            { name: 'Upload', description: 'Place one cargo onto another player\'s depot' },
+            { name: 'Impulse', description: 'Target shuffles all function cards into deck' },
+            { name: 'Expired license', description: 'Target puts all cargo at bottom of depot' },
+            { name: 'Market Regulation', description: 'Switch any two planetary markets' },
+            { name: 'Free Port', description: 'Play any cargo card on your current planet' },
+            { name: 'Hinder', description: 'Place the black hole where you choose' },
+            { name: 'Recall', description: 'Send player to Hub, fill cargo, no function card' },
+            { name: 'Jammer', description: 'Lock one cargo for each player (including you)' },
+            { name: 'Jettison', description: 'Target shuffles one cargo into discard deck' },
+            { name: 'Delivery', description: 'Target player fills cargo slots from depot' },
+            { name: 'Warp', description: 'Target player moves to a random planet' },
+            { name: 'Stealth', description: 'Move 4 spaces, nothing blocks movement' },
+            { name: 'Data Switch', description: 'Switch cargo cards between any two players' },
+            { name: 'Jump', description: 'Target jumps to any planet of your choice' },
+            { name: 'Glitch', description: 'Draw function card, move up to 10 spaces' },
+            { name: 'I.D. Fraud', description: 'Target loads open cargo slots from your depot' },
+            { name: 'Replicator', description: 'Reveal & play this as any of your function cards' },
+            { name: 'Breakdown', description: 'Target player skips their next turn' },
+            { name: 'Root', description: 'Look at target\'s function cards, play one as your own' },
+            { name: 'EMP', description: 'All players shuffle function cards into deck' }
+        ];
+        
+        // Create scrollable area with cards
+        const cardWidth = 140;
+        const cardHeight = 100;
+        const cardsPerRow = 5;
+        const cardSpacing = 10;
+        const startY = -panelHeight / 2 + 80;
+        
+        functionCards.forEach((card, index) => {
+            const row = Math.floor(index / cardsPerRow);
+            const col = index % cardsPerRow;
+            const x = -((cardsPerRow - 1) * (cardWidth + cardSpacing)) / 2 + col * (cardWidth + cardSpacing);
+            const y = startY + row * (cardHeight + cardSpacing);
+            
+            // Card background
+            const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, 0x663399);
+            cardBg.setStrokeStyle(2, 0xaa55dd);
+            cardBg.setInteractive();
+            
+            // Card name
+            const cardName = this.add.text(x, y - 30, card.name, {
+                font: 'bold 14px Arial',
+                fill: '#ffffff',
+                wordWrap: { width: cardWidth - 10 }
+            }).setOrigin(0.5);
+            
+            // Card description
+            const cardDesc = this.add.text(x, y + 10, card.description, {
+                font: '10px Arial',
+                fill: '#cccccc',
+                wordWrap: { width: cardWidth - 10 },
+                align: 'center'
+            }).setOrigin(0.5);
+            
+            // Click handler
+            cardBg.on('pointerdown', () => {
+                console.log('Adding function card:', card.name);
+                this.socket.emit('debugAddFunctionCard', { cardName: card.name, cardDescription: card.description });
+                
+                // Show feedback
+                const feedback = this.add.text(x, y, 'Added!', {
+                    font: 'bold 16px Arial',
+                    fill: '#00ff00'
+                }).setOrigin(0.5);
+                feedback.setScrollFactor(0);
+                feedback.setDepth(4001);
+                this.debugPanel.add(feedback);
+                
+                this.tweens.add({
+                    targets: feedback,
+                    alpha: 0,
+                    y: y - 30,
+                    duration: 1000,
+                    onComplete: () => feedback.destroy()
+                });
+            });
+            
+            cardBg.on('pointerover', () => cardBg.setFillStyle(0x8844bb));
+            cardBg.on('pointerout', () => cardBg.setFillStyle(0x663399));
+            
+            this.debugPanel.add([cardBg, cardName, cardDesc]);
+        });
     }
 
     positionDiceDisplay() {
@@ -2481,19 +2661,40 @@ class GameScene extends Phaser.Scene {
             // Check if we should auto-show movement markers after dice roll
             if (this.waitingForMovementMarkers) {
                 const myPlayer = players.find(p => p.socketId === this.socket.id);
-                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship) {
+                console.log('[MARKERS DEBUG] waitingForMovementMarkers=true, myPlayer:', !!myPlayer, 'movesLeft:', myPlayer?.movesLeft, 'turnPhase:', this.turnPhase);
+                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship && this.turnPhase === 'move') {
                     console.log('Auto-showing movement markers after playersUpdate');
                     const { q, r, s } = myPlayer.ship.position;
                     this.highlightReachableTiles(q, r, s, myPlayer.movesLeft);
                     this.waitingForMovementMarkers = false;
+                } else {
+                    console.log('[MARKERS DEBUG] Condition failed:', {
+                        hasPlayer: !!myPlayer,
+                        movesLeft: myPlayer?.movesLeft,
+                        hasShip: !!myPlayer?.ship,
+                        phase: this.turnPhase,
+                        needsMove: this.turnPhase === 'move'
+                    });
                 }
+            }
+        });
+
+        this.socket.on('phaseChanged', (data) => {
+            console.log('[GAMESCENE PHASE DEBUG] Phase changed to:', data.phase);
+            this.turnPhase = data.phase;
+            
+            // Clear movement markers when phase changes to 'roll'
+            if (data.phase === 'roll') {
+                console.log('[GAMESCENE] Clearing highlights and resetting flag due to roll phase');
+                this.clearHighlights();
+                this.waitingForMovementMarkers = false;
             }
         });
 
         this.socket.on('diceRolled', (data) => {
             // Auto-show movement markers when the current player rolls
             if (data.playerId === this.socket.id) {
-                console.log('Setting flag to show movement markers on next playersUpdate');
+                console.log('[DICE DEBUG] Setting waitingForMovementMarkers=true');
                 this.waitingForMovementMarkers = true;
             }
         });
@@ -3218,18 +3419,15 @@ class GameScene extends Phaser.Scene {
         } else {
             // For non-movement tiles that occupy multiple hexes (hub, planets),
             // check all neighboring hexes from ALL occupied positions
-            console.log(`[getNeighbors] Non-movement tile at ${q},${r},${s}`);
             const occupiedHexes = new Set();
             
             // Get occupied positions from the tile data
             const occupiedPositions = currentTile.occupiedPositions || [{ q, r }];
-            console.log(`[getNeighbors] Occupied positions:`, occupiedPositions.length);
             
             // Collect all occupied hex positions
             occupiedPositions.forEach(pos => {
                 occupiedHexes.add(`${parseInt(pos.q)},${parseInt(pos.r)}`);
             });
-            console.log(`[getNeighbors] Occupied hexes:`, occupiedHexes.size);
             
             // Get neighbors from ALL occupied hexes
             let hexCount = 0;
@@ -3260,7 +3458,6 @@ class GameScene extends Phaser.Scene {
                                         if (tileEntry.sprite === sprite) {
                                             nbrTile = tileEntry;
                                             canonicalS = 3; // Non-movement tiles use s=3
-                                            console.log(`[getNeighbors] Found ${tileEntry.type} at ${hexNbr.q},${hexNbr.r} via spriteKeyMap`);
                                             break;
                                         }
                                     }
@@ -3279,14 +3476,12 @@ class GameScene extends Phaser.Scene {
             });
             
             const deduped = Array.from(new Map(results.map(r => [`${r.q},${r.r},${r.s}`, r])).values());
-            console.log(`[getNeighbors] Non-movement at ${q},${r},${s}: found ${deduped.length} neighbors`);
             return deduped;
         }
 
         for (const keyStr of keysToExplore) {
             const [kq, kr, ks] = keyStr.split(',').map(Number);
             const baseNeighbors = this.getTriangleNeighborsBase(kq, kr, ks);
-            console.log(`  [getNeighbors] Exploring ${keyStr}, base neighbors:`, baseNeighbors);
 
             for (const neighbor of baseNeighbors) {
                 const neighborOriginalS = neighbor.s;
@@ -3294,13 +3489,10 @@ class GameScene extends Phaser.Scene {
                 let neighborKey = `${neighbor.q},${neighbor.r},${neighborS}`;
                 let neighborTile = this.tileData.get(neighborKey);
 
-                console.log(`    Checking neighbor ${neighborKey}, found tile:`, neighborTile ? neighborTile.type : 'NO');
-
                 if (!neighborTile && neighborS !== 3) {
                     neighborS = 3;
                     neighborKey = `${neighbor.q},${neighbor.r},${neighborS}`;
                     neighborTile = this.tileData.get(neighborKey);
-                    console.log(`      Fallback to s=3: ${neighborKey}, found:`, neighborTile ? neighborTile.type : 'NO');
                 }
 
                 // Check if this position is part of the hub (hub only registered at 0,0,3)
@@ -3322,18 +3514,15 @@ class GameScene extends Phaser.Scene {
                             };
                             neighborKey = checkKey;
                             neighborS = 3;
-                            console.log(`      Found hub via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r}`);
                         }
                     }
                 }
 
                 if (!neighborTile) {
-                    console.log(`      SKIP: no tile`);
                     continue;
                 }
 
                 if (neighborTile.type === 'movement' && neighborS !== neighborOriginalS) {
-                    console.log(`      SKIP: movement tile with fallback (vertex only)`);
                     continue;
                 }
 
@@ -3385,14 +3574,11 @@ class GameScene extends Phaser.Scene {
     }
 
     highlightReachableTiles(startQ, startR, startS, range, stealthMode = false) {
-        console.log(`Highlighting tiles from ${startQ},${startR},${startS} range ${range} stealth=${stealthMode}`);
-        console.log('Teleport tiles:', this.teleportTiles);
         this.clearHighlights();
 
         if (range <= 0) return;
 
         try {
-        console.log('Starting BFS setup...');
 
         // Identify occupied tiles so we do not path through ships (unless stealth mode)
         const occupiedTiles = new Set();
@@ -3409,7 +3595,11 @@ class GameScene extends Phaser.Scene {
                     if (occTile && occTile.type !== 'movement') {
                         occKey = `${p.ship.position.q},${p.ship.position.r},3`;
                     }
-                    occupiedTiles.add(occKey);
+                    // Only add to occupied set if the tile doesn't allow multiple players
+                    // Hub and planets allow multiple players, so don't block pathfinding
+                    if (occTile && occTile.type !== 'hub' && occTile.type !== 'planet') {
+                        occupiedTiles.add(occKey);
+                    }
                 }
             });
         }
@@ -3432,7 +3622,6 @@ class GameScene extends Phaser.Scene {
                 const checkKey = `${q},${r},3`;
                 if (hubKeys && hubKeys.has(checkKey)) {
                     startTile = hubTile;
-                    console.log(`[BFS] Player is on hub hex ${q},${r}, using hub tile data`);
                 }
             }
         }
@@ -3445,7 +3634,6 @@ class GameScene extends Phaser.Scene {
         const bestDistances = new Map();
         
         if (startTile && startTile.occupiedPositions && startTile.occupiedPositions.length > 1) {
-            console.log(`Starting BFS from multi-hex tile (${startTile.type}) with ${startTile.occupiedPositions.length} positions`);
             // Add all occupied positions to the initial queue with distance 0
             startTile.occupiedPositions.forEach(pos => {
                 const initKey = `${parseInt(pos.q)},${parseInt(pos.r)},${startSCanonical}`;
@@ -3454,22 +3642,16 @@ class GameScene extends Phaser.Scene {
                     bestDistances.set(initKey, 0);
                 }
             });
-            console.log(`Added ${queue.length} initial positions to queue`);
         } else {
             queue.push({ q, r, s: startSCanonical, dist: 0 });
             bestDistances.set(startKey, 0);
         }
-
-        console.log('Starting BFS loop...');
 
         let iterations = 0;
         const maxIterations = 1000;
 
         while (queue.length > 0 && iterations < maxIterations) {
             iterations++;
-            if (iterations % 100 === 0) {
-                console.log(`BFS iteration ${iterations}, queue size: ${queue.length}`);
-            }
             // Process the lowest-cost entry first (queue is small, so sort on-demand)
             queue.sort((a, b) => a.dist - b.dist);
             const current = queue.shift();
@@ -3526,7 +3708,6 @@ class GameScene extends Phaser.Scene {
             }
 
             const neighbors = this.getNeighbors(current.q, current.r, current.s);
-            console.log(`Iter ${iterations}: Got ${neighbors.length} neighbors, processing...`);
 
             for (const neighbor of neighbors) {
                 let neighborS = neighbor.s;
@@ -3550,9 +3731,9 @@ class GameScene extends Phaser.Scene {
                         const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
                         if (hubKeys && hubKeys.has(checkKey)) {
                             tile = hubTile;
-                            key = '0,0,3';
+                            // Keep the actual neighbor position for multi-hex tiles
+                            key = checkKey;
                             neighborS = 3;
-                            console.log(`[HUB LOOKUP] Found hub via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r}`);
                         }
                     }
                     
@@ -3564,9 +3745,9 @@ class GameScene extends Phaser.Scene {
                                 for (const [tileKey, tileEntry] of this.tileData.entries()) {
                                     if (tileEntry.sprite === sprite) {
                                         tile = tileEntry;
-                                        key = tileKey;
+                                        // Keep the actual neighbor position for multi-hex tiles
+                                        key = checkKey;
                                         neighborS = 3;
-                                        console.log(`[TILE LOOKUP] Found ${tileEntry.type} via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r} -> ${tileKey}`);
                                         break;
                                     }
                                 }
@@ -3598,11 +3779,12 @@ class GameScene extends Phaser.Scene {
                             return backKey === currentKey;
                         });
                     } else if (currentTileData && currentTileData.occupiedPositions) {
-                        // Non-movement to movement: check if back neighbor hex is occupied
+                        // Non-movement (hub/planet) to movement: check if back-neighbor hex is in bestDistances
+                        // Since we now track each hex position separately, check if any back-neighbor hex
+                        // with s=3 (the canonical s for non-movement tiles) is in bestDistances
                         hasBackEdge = backNeighbors.some(back => {
-                            return currentTileData.occupiedPositions.some(pos => 
-                                pos.q === back.q && pos.r === back.r
-                            );
+                            const backHexKey = `${back.q},${back.r},3`;
+                            return bestDistances.has(backHexKey);
                         });
                     } else {
                         // Fallback to spriteKeyMap
@@ -3694,8 +3876,6 @@ class GameScene extends Phaser.Scene {
             }
         }
 
-        console.log(`BFS loop finished after ${iterations} iterations`);
-        console.log(`BFS complete. bestDistances has ${bestDistances.size} entries`);
         let highlightCount = 0;
 
         for (const [key, dist] of bestDistances.entries()) {
@@ -3703,18 +3883,15 @@ class GameScene extends Phaser.Scene {
                 continue;
             }
 
-            console.log(`  Checking tile ${key} at dist ${dist}`);
             highlightCount++;
 
             const tile = this.tileData.get(key);
             if (!tile) {
-                console.log(`    No tile found in tileData for ${key}`);
                 continue;
             }
 
             // Skip asteroids and black holes as landing spots (even in stealth mode)
             if (tile.type === 'asteroid_belt' || tile.type === 'black_hole') {
-                console.log(`    Skipping ${tile.type} for marker placement`);
                 continue;
             }
 
@@ -4003,9 +4180,9 @@ class GameScene extends Phaser.Scene {
                     
                     // Stop event propagation so ship click doesn't also trigger tile clicks
                     container.on('pointerdown', (pointer, localX, localY, event) => {
-                        console.log('Pointer down on ship. Moves:', this.myPlayer.movesLeft);
+                        console.log('Pointer down on ship. Moves:', this.myPlayer.movesLeft, 'Phase:', this.turnPhase);
                         event.stopPropagation(); // Prevent tile clicks when clicking ship
-                        if (this.myPlayer.movesLeft > 0) {
+                        if (this.myPlayer.movesLeft > 0 && this.turnPhase === 'move') {
                             const stealthMode = this.myPlayer.stealth || false;
                             this.highlightReachableTiles(q, r, s, this.myPlayer.movesLeft, stealthMode);
                         }
@@ -4076,9 +4253,9 @@ class GameScene extends Phaser.Scene {
             if (this.players) {
                 this.renderShips(this.players);
                 
-                // Re-highlight movement markers if current player has moves
+                // Re-highlight movement markers if current player has moves AND in move phase
                 const myPlayer = this.players.find(p => p.socketId === this.socket.id);
-                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship && myPlayer.ship.position) {
+                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship && myPlayer.ship.position && this.turnPhase === 'move') {
                     const pos = myPlayer.ship.position;
                     const stealthMode = myPlayer.stealth || false;
                     this.highlightReachableTiles(pos.q, pos.r, pos.s, myPlayer.movesLeft, stealthMode);

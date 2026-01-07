@@ -155,6 +155,34 @@ io.on('connection', (socket) => {
         io.to(gameId).emit('playersUpdate', game.players);
     });
 
+    // Debug endpoint to add function cards for testing
+    socket.on('debugAddFunctionCard', (data) => {
+        console.log('debugAddFunctionCard received:', data);
+        const gameId = playerToGame.get(socket.id);
+        const game = games.get(gameId);
+        
+        if (!game) {
+            console.log('No game found for player');
+            return;
+        }
+        
+        const player = game.players.find(p => p.socketId === socket.id);
+        if (!player) {
+            console.log('Player not found in game');
+            return;
+        }
+        
+        // Create a new function card with the specified name and description
+        const { FunctionCard } = require('./src/cards');
+        const newCard = new FunctionCard(data.cardName, data.cardDescription);
+        player.functionCards.push(newCard);
+        
+        console.log(`Added ${data.cardName} to ${player.name}'s hand. Now has ${player.functionCards.length} cards.`);
+        
+        // Broadcast updated player list to all players in game
+        io.to(gameId).emit('playersUpdate', game.players);
+    });
+
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
         const gameId = playerToGame.get(socket.id);
@@ -324,11 +352,13 @@ io.on('connection', (socket) => {
             player.movesLeft = result[0] + result[1];
         }
         io.to(gameId).emit('diceRolled', { playerId: socket.id, result: result });
-        io.to(gameId).emit('playersUpdate', game.players);
         
-        // Advance to move phase
+        // Advance to move phase BEFORE emitting playersUpdate
         metadata.turnPhase = 'move';
         io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
+        
+        // Now emit playersUpdate so client shows markers with correct phase
+        io.to(gameId).emit('playersUpdate', game.players);
     });
 
     socket.on('requestTargetFunctionCards', (data) => {
@@ -378,7 +408,13 @@ io.on('connection', (socket) => {
         if (!game || !metadata) return;
         
         const player = game.players.find(p => p.socketId === socket.id);
-        const targetPlayer = data.targetId ? game.players.find(p => p.socketId === data.targetId) : null;
+        
+        // Debug: log all player IDs
+        console.log('All players:', game.players.map(p => ({ id: p.id, name: p.name })));
+        console.log('Looking for targetId:', data.targetId, 'type:', typeof data.targetId);
+        
+        const targetPlayer = data.targetId !== undefined && data.targetId !== null ? game.players.find(p => p.id === data.targetId) : null;
+        console.log('Found targetPlayer:', targetPlayer ? targetPlayer.name : 'null');
         
         // Check if it's this player's turn and they're in roll phase
         if (game.players[metadata.currentTurnIndex].socketId !== socket.id) {
@@ -551,6 +587,7 @@ io.on('connection', (socket) => {
                     player.movesLeft = 4;
                     player.stealth = true;
                     effectMessage = 'Move 4 spaces without obstruction';
+                    metadata.turnPhase = 'move';
                     break;
                     
                 case 'Glitch':
@@ -560,6 +597,7 @@ io.on('connection', (socket) => {
                     }
                     player.movesLeft = 10;
                     effectMessage = 'Drew a function card and gained 10 moves';
+                    metadata.turnPhase = 'move';
                     break;
                     
                 case 'EMP':
@@ -577,17 +615,16 @@ io.on('connection', (socket) => {
                     
                 case 'Jammer':
                     {
-                        const jamTarget = data.targetId ? game.players.find(p => p.id === data.targetId) : null;
-                        if (jamTarget && data.cargoIndex !== undefined && jamTarget.cargo[data.cargoIndex]) {
-                            jamTarget.cargo[data.cargoIndex].locked = true;
-                            effectMessage = `Locked ${jamTarget.name}'s cargo`;
-                        } else if (jamTarget && jamTarget.cargo.length > 0) {
-                            const unlocked = jamTarget.cargo.find(c => !c.locked);
+                        if (targetPlayer && data.cargoIndex !== undefined && targetPlayer.cargo[data.cargoIndex]) {
+                            targetPlayer.cargo[data.cargoIndex].locked = true;
+                            effectMessage = `Locked ${targetPlayer.name}'s cargo`;
+                        } else if (targetPlayer && targetPlayer.cargo.length > 0) {
+                            const unlocked = targetPlayer.cargo.find(c => !c.locked);
                             if (unlocked) {
                                 unlocked.locked = true;
-                                effectMessage = `Locked ${jamTarget.name}'s cargo`;
+                                effectMessage = `Locked ${targetPlayer.name}'s cargo`;
                             } else {
-                                effectMessage = `${jamTarget.name} has no unlocked cargo`;
+                                effectMessage = `${targetPlayer.name} has no unlocked cargo`;
                             }
                         } else {
                             effectMessage = 'No target or cargo to lock';
@@ -904,20 +941,25 @@ io.on('connection', (socket) => {
             // Remove the card from player's hand
             player.functionCards.splice(data.cardIndex, 1);
             
+            // Advance to move phase (Stealth and Glitch handle this in their case statements)
+            if (card.name !== 'Stealth' && card.name !== 'Glitch') {
+                metadata.turnPhase = 'move';
+                console.log('Phase changed to move after function card');
+            }
+            
+            // Emit phase change FIRST so client processes it before playersUpdate
+            io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
+            
+            // Then emit playersUpdate so client can show movement markers with correct phase
             io.to(gameId).emit('playersUpdate', game.players);
+            
+            // Finally notify about the card being played
             io.to(gameId).emit('functionCardPlayed', { 
                 playerId: socket.id, 
                 playerName: player.name,
                 cardName: card.name,
                 effectMessage: effectMessage
             });
-            
-            // Advance to move phase (unless card gives moves directly)
-            if (card.name !== 'Stealth' && card.name !== 'Glitch') {
-                metadata.turnPhase = 'move';
-                console.log('Phase changed to move after function card');
-                io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
-            }
         } else {
             console.log('Invalid card index or no player found. Player:', !!player, 'cardIndex:', data.cardIndex, 'hand size:', player ? player.functionCards.length : 0);
         }
@@ -964,6 +1006,23 @@ io.on('connection', (socket) => {
         
         const player = game.players.find(p => p.socketId === socket.id);
         
+        // Reset moves to 0 when ending turn
+        if (player) {
+            player.movesLeft = 0;
+        }
+        
+        // Change phase to roll BEFORE emitting playersUpdate so client clears markers
+        const oldPhase = metadata.turnPhase;
+        metadata.turnPhase = 'roll';
+        
+        // Emit phase change first
+        io.to(gameId).emit('phaseChanged', { phase: metadata.turnPhase });
+        
+        // Then emit playersUpdate so client processes movesLeft=0 with phase='roll'
+        if (player) {
+            io.to(gameId).emit('playersUpdate', game.players);
+        }
+        
         // Check if player is on hub - handle hub arrival
         if (player && game.isPlayerOnHub(player)) {
             const hubResult = game.handleHubArrival(socket.id);
@@ -984,7 +1043,7 @@ io.on('connection', (socket) => {
         
         // Move to next player
         metadata.currentTurnIndex = (metadata.currentTurnIndex + 1) % game.players.length;
-        metadata.turnPhase = 'roll'; // Reset to roll phase for next player
+        // Phase already set to 'roll' above
         
         io.to(gameId).emit('turnChanged', {
             currentPlayerId: game.players[metadata.currentTurnIndex].socketId,
