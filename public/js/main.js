@@ -418,7 +418,12 @@ class UIScene extends Phaser.Scene {
     }
 
     setupSocketListeners() {
-        if (!this.socket) return;
+        if (!this.socket) {
+            console.error('UIScene: No socket available in setupSocketListeners!');
+            return;
+        }
+
+        console.log('UIScene: Setting up socket listeners with socket:', this.socket.id);
 
         this.socket.on('playersUpdate', (players) => {
             console.log('UIScene received playersUpdate:', players.length, 'players');
@@ -445,6 +450,12 @@ class UIScene extends Phaser.Scene {
             this.currentTurnPlayerId = data.currentPlayerId;
             this.turnPhase = data.phase || 'roll';
             this.handleTurnChange(data);
+            
+            // Re-render UI to show End Turn button now that currentTurnPlayerId is set
+            if (this.lastPlayersData) {
+                console.log('Re-rendering UI after turnChanged to show End Turn button');
+                this.renderUI(this.lastPlayersData);
+            }
         });
 
         this.socket.on('phaseChanged', (data) => {
@@ -668,12 +679,25 @@ class UIScene extends Phaser.Scene {
         this.otherPlayersGroup.clear(true, true);
         this.currentPlayerGroup.clear(true, true);
 
-        const currentPlayer = players.find(p => p.id === this.socket.id);
-        const otherPlayers = players.filter(p => p.id !== this.socket.id);
+        console.log('renderUI called with players:', players);
+        console.log('My socket.id:', this.socket.id);
+        console.log('Players socketIds:', players.map(p => ({ name: p.name, id: p.id, socketId: p.socketId })));
+
+        const currentPlayer = players.find(p => p.socketId === this.socket.id);
+        const otherPlayers = players.filter(p => p.socketId !== this.socket.id);
+
+        console.log('Current player found:', !!currentPlayer);
+        if (currentPlayer) {
+            console.log('Current player cargo:', currentPlayer.cargo);
+            console.log('Current player depot:', currentPlayer.depot);
+            console.log('Current player functionCards:', currentPlayer.functionCards);
+        }
 
         this.renderOtherPlayers(otherPlayers);
         if (currentPlayer) {
             this.renderCurrentPlayer(currentPlayer);
+        } else {
+            console.warn('No current player found to render!');
         }
     }
 
@@ -884,30 +908,30 @@ class UIScene extends Phaser.Scene {
             let hoverPopup = null;
             let hoverLine = null;
             cardImage.on('pointerover', () => {
+                // Show popup even without description (just show card name)
+                const popupWidth = 200;
+                const popupHeight = card.description ? 120 : 60;
+                const popupX = cardX;
+                const popupY = cardY - (cardHeight * 1.5) / 2 - popupHeight / 2 - 30;
+                
+                hoverPopup = this.add.container(popupX, popupY);
+                
+                // Background
+                const bg = this.add.rectangle(0, 0, popupWidth, popupHeight, 0x000000, 0.95);
+                bg.setStrokeStyle(3, 0xffffff);
+                hoverPopup.add(bg);
+                
+                // Title
+                const titleText = this.add.text(0, card.description ? -popupHeight / 2 + 15 : 0, card.name, {
+                    font: 'bold 16px Arial',
+                    fill: '#FFD700',
+                    wordWrap: { width: popupWidth - 20 },
+                    align: 'center'
+                }).setOrigin(0.5);
+                hoverPopup.add(titleText);
+                
+                // Description (if it exists)
                 if (card.description) {
-                    // Create popup container
-                    const popupWidth = 200;
-                    const popupHeight = 120;
-                    const popupX = cardX;
-                    const popupY = cardY - (cardHeight * 1.5) / 2 - popupHeight / 2 - 30;
-                    
-                    hoverPopup = this.add.container(popupX, popupY);
-                    
-                    // Background
-                    const bg = this.add.rectangle(0, 0, popupWidth, popupHeight, 0x000000, 0.95);
-                    bg.setStrokeStyle(3, 0xffffff);
-                    hoverPopup.add(bg);
-                    
-                    // Title
-                    const titleText = this.add.text(0, -popupHeight / 2 + 15, card.name, {
-                        font: 'bold 16px Arial',
-                        fill: '#FFD700',
-                        wordWrap: { width: popupWidth - 20 },
-                        align: 'center'
-                    }).setOrigin(0.5, 0);
-                    hoverPopup.add(titleText);
-                    
-                    // Description
                     const descText = this.add.text(0, -popupHeight / 2 + 45, card.description, {
                         font: '14px Arial',
                         fill: '#ffffff',
@@ -915,20 +939,20 @@ class UIScene extends Phaser.Scene {
                         align: 'center'
                     }).setOrigin(0.5, 0);
                     hoverPopup.add(descText);
-                    
-                    hoverPopup.setDepth(3000);
-                    this.currentPlayerGroup.add(hoverPopup);
-                    
-                    // Draw line from popup to card
-                    hoverLine = this.add.graphics();
-                    hoverLine.lineStyle(2, 0xffffff, 1);
-                    hoverLine.beginPath();
-                    hoverLine.moveTo(popupX, popupY + popupHeight / 2);
-                    hoverLine.lineTo(cardX, cardY - (cardHeight * 1.5) / 2);
-                    hoverLine.strokePath();
-                    hoverLine.setDepth(2999);
-                    this.currentPlayerGroup.add(hoverLine);
                 }
+                
+                hoverPopup.setDepth(3000);
+                this.currentPlayerGroup.add(hoverPopup);
+                
+                // Draw line from popup to card
+                hoverLine = this.add.graphics();
+                hoverLine.lineStyle(2, 0xffffff, 1);
+                hoverLine.beginPath();
+                hoverLine.moveTo(popupX, popupY + popupHeight / 2);
+                hoverLine.lineTo(cardX, cardY - (cardHeight * 1.5) / 2);
+                hoverLine.strokePath();
+                hoverLine.setDepth(2999);
+                this.currentPlayerGroup.add(hoverLine);
             });
             cardImage.on('pointerout', () => {
                 if (hoverPopup) {
@@ -953,7 +977,13 @@ class UIScene extends Phaser.Scene {
         this.currentPlayerGroup.add(movesText);
 
         // End Turn Button (only show if it's this player's turn)
+        console.log('[END TURN BUTTON DEBUG] Checking conditions:');
+        console.log('  this.currentTurnPlayerId:', this.currentTurnPlayerId);
+        console.log('  this.socket.id:', this.socket.id);
+        console.log('  Match?', this.currentTurnPlayerId === this.socket.id);
+        
         if (this.currentTurnPlayerId === this.socket.id) {
+            console.log('[END TURN BUTTON] Creating End Turn button');
             const endTurnBtn = this.add.rectangle(btnX, btnY + 50, 120, 50, 0x884444).setInteractive();
             endTurnBtn.setStrokeStyle(2, 0xffffff);
             this.currentPlayerGroup.add(endTurnBtn);
@@ -967,6 +997,8 @@ class UIScene extends Phaser.Scene {
             
             endTurnBtn.on('pointerover', () => endTurnBtn.fillColor = 0xaa6666);
             endTurnBtn.on('pointerout', () => endTurnBtn.fillColor = 0x884444);
+        } else {
+            console.log('[END TURN BUTTON] Not my turn, skipping button');
         }
     }
 
@@ -1024,7 +1056,7 @@ class UIScene extends Phaser.Scene {
         const centerY = this.cameras.main.height / 2;
         
         // Get current player's function cards
-        const myPlayer = this.players.find(p => p.id === this.socket.id);
+        const myPlayer = this.players.find(p => p.socketId === this.socket.id);
         const functionCards = myPlayer ? myPlayer.functionCards : [];
         
         // Calculate popup height based on whether there are function cards
@@ -1225,7 +1257,7 @@ class UIScene extends Phaser.Scene {
                             this.turnPopup = null;
                         }
                         const gameScene = this.scene.get('GameScene');
-                        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.id === this.socket.id) : null;
+                        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.socketId === this.socket.id) : null;
                         if (myPlayer && myPlayer.cargo && myPlayer.cargo.length > 0) {
                             this.showCargoSelectionDialog({
                                 title: 'Select cargo to deliver via Free Port',
@@ -1540,7 +1572,7 @@ class UIScene extends Phaser.Scene {
 
     showReplicatorCardSelection(replicatorCardIndex) {
         const gameScene = this.scene.get('GameScene');
-        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.id === this.socket.id) : null;
+        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.socketId === this.socket.id) : null;
         
         if (!myPlayer || !myPlayer.functionCards || myPlayer.functionCards.length <= 1) {
             this.socket.emit('playFunctionCard', { cardIndex: replicatorCardIndex, targetId: null });
@@ -2337,17 +2369,37 @@ class GameScene extends Phaser.Scene {
 
         this.socket.on('playersUpdate', (players) => {
             console.log('GameScene received playersUpdate:', players.length, 'players');
+            console.log('TEST: Code is executing after playersUpdate log');
             this.players = players;
-            this.renderShips(players);
+            
+            // Forward to UIScene FIRST before renderShips (in case renderShips has errors)
             const uiScene = this.scene.get('UIScene');
+            console.log('GameScene: uiScene exists?', !!uiScene);
+            console.log('GameScene: uiScene.renderUI exists?', uiScene ? !!uiScene.renderUI : 'N/A');
+            
+            // Forward playersUpdate to UIScene to render UI
+            if (uiScene && uiScene.renderUI) {
+                console.log('GameScene: Forwarding playersUpdate to UIScene');
+                uiScene.renderUI(players);
+            } else {
+                console.warn('GameScene: Cannot forward to UIScene -', uiScene ? 'renderUI missing' : 'uiScene not found');
+            }
+            
             // Only update start button if game hasn't started yet
             if (uiScene && !this.gameStarted) {
                 uiScene.updateStartButton(players);
             }
             
+            // Render ships (wrapped in try-catch to prevent UI failures)
+            try {
+                this.renderShips(players);
+            } catch (error) {
+                console.error('Error in renderShips:', error);
+            }
+            
             // Check if we should auto-show movement markers after dice roll
             if (this.waitingForMovementMarkers) {
-                const myPlayer = players.find(p => p.id === this.socket.id);
+                const myPlayer = players.find(p => p.socketId === this.socket.id);
                 if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship) {
                     console.log('Auto-showing movement markers after playersUpdate');
                     const { q, r, s } = myPlayer.ship.position;
@@ -2570,7 +2622,7 @@ class GameScene extends Phaser.Scene {
                 tint = 0xffffff;
             } else if (tile.type === 'teleportation') {
                 texture = 'triangle';
-                tint = 0x8800ff; // Purple/magenta color for wormholes
+                tint = 0x00ffff; // Cyan color for teleporters
             } else if (tile.type === 'black_hole') {
                 texture = 'triangle';
                 tint = 0x000000;
@@ -2632,30 +2684,6 @@ class GameScene extends Phaser.Scene {
             sprite.setDepth(1);
             this.boardGroup.add(sprite);
             sprite.setTint(tint);
-
-            // Add wormhole animation for teleportation tiles
-            if (tile.type === 'teleportation') {
-                // Pulsing scale effect
-                this.tweens.add({
-                    targets: sprite,
-                    scaleX: 1.2,
-                    scaleY: 1.2,
-                    alpha: 0.7,
-                    duration: 1000,
-                    yoyo: true,
-                    repeat: -1,
-                    ease: 'Sine.easeInOut'
-                });
-                
-                // Rotating effect
-                this.tweens.add({
-                    targets: sprite,
-                    angle: 360,
-                    duration: 3000,
-                    repeat: -1,
-                    ease: 'Linear'
-                });
-            }
 
             // Debug: log a few sprite positions for inspection
             if (tile.type === 'hub' || tile.type === 'planet' || tile.type === 'movement') {
@@ -3282,11 +3310,8 @@ class GameScene extends Phaser.Scene {
                 console.log(`BFS iteration ${iterations}, queue size: ${queue.length}`);
             }
             // Process the lowest-cost entry first (queue is small, so sort on-demand)
-            console.log(`Iter ${iterations}: Before sort`);
             queue.sort((a, b) => a.dist - b.dist);
-            console.log(`Iter ${iterations}: After sort, shifting`);
             const current = queue.shift();
-            console.log(`Iter ${iterations}: Processing ${current.q},${current.r},${current.s}`);
             const currentKey = `${current.q},${current.r},${current.s}`;
             const recorded = bestDistances.get(currentKey);
 
@@ -3712,6 +3737,8 @@ class GameScene extends Phaser.Scene {
 
     renderShips(players) {
         console.log('Rendering ships. Players:', players.length);
+        console.log('GameScene renderShips - this.socket:', this.socket);
+        console.log('GameScene renderShips - this.socket.id:', this.socket ? this.socket.id : 'NO SOCKET');
         if (!this.shipsGroup) {
             this.shipsGroup = this.add.group();
         }
@@ -3723,15 +3750,19 @@ class GameScene extends Phaser.Scene {
         const offsetX = this.boardOffset ? this.boardOffset.x : 0;
         const offsetY = this.boardOffset ? this.boardOffset.y : 0;
 
-        this.myPlayer = players.find(p => p.id === this.socket.id);
+        const socketId = this.socket ? this.socket.id : null;
+        this.myPlayer = players.find(p => p.socketId === socketId);
         if (this.myPlayer) {
             console.log('My Player found. Moves Left:', this.myPlayer.movesLeft);
+            console.log('My Player ship:', this.myPlayer.ship);
         } else {
-            console.log('My Player NOT found. Socket ID:', this.socket.id);
+            console.log('My Player NOT found. Socket ID:', socketId);
         }
 
         players.forEach(player => {
+            console.log(`Rendering player ${player.name}: has ship?`, !!player.ship);
             if (player.ship) {
+                console.log(`  Ship position:`, player.ship.position);
                 const q = parseInt(player.ship.position.q);
                 const r = parseInt(player.ship.position.r);
                 const s = player.ship.position.s !== undefined ? parseInt(player.ship.position.s) : 3;
@@ -3774,17 +3805,23 @@ class GameScene extends Phaser.Scene {
                 }
 
                 // Draw ship as a circle for now
+                const shipX = Math.round(centerX + x + subX + offsetX);
+                const shipY = Math.round(centerY + y + subY + offsetY);
+                console.log(`[SHIP RENDER] Drawing ship for ${player.name} at (${shipX}, ${shipY}) color: ${player.color}`);
+                
                 const shipGraphics = this.add.graphics();
-                shipGraphics.fillStyle(parseInt(player.color.replace('#', '0x')), 1);
+                const colorHex = player.color ? parseInt(player.color.substring(1), 16) : 0xFF6B6B;
+                console.log(`[SHIP RENDER] Converted color from ${player.color} to ${colorHex.toString(16)}`);
+                shipGraphics.fillStyle(colorHex, 1);
                 shipGraphics.fillCircle(0, 0, 10); // Smaller ship for sub-tiles
                 shipGraphics.lineStyle(2, 0xffffff);
                 shipGraphics.strokeCircle(0, 0, 10);
                 
-                const shipX = Math.round(centerX + x + subX + offsetX);
-                const shipY = Math.round(centerY + y + subY + offsetY);
+                console.log(`[SHIP RENDER] Creating container at (${shipX}, ${shipY})`);
                 const container = this.add.container(shipX, shipY, [shipGraphics]);
                 this.shipsGroup.add(container);
                 container.setDepth(3); // Above tiles (depth 2) but allow click-through
+                console.log(`[SHIP RENDER] Container created, depth: ${container.depth}`);
                 
                 // Add player name above ship
                 const nameText = this.add.text(0, -20, player.name, {
@@ -3796,8 +3833,8 @@ class GameScene extends Phaser.Scene {
                 container.add(nameText);
 
                 // Make my ship interactive but allow events to pass through to tiles below
-                if (this.myPlayer && player.id === this.myPlayer.id) {
-                    console.log('Making my ship interactive');
+                if (this.myPlayer && player.socketId === this.myPlayer.socketId) {
+                    console.log('Making my ship interactive for player:', player.name);
                     const hitArea = new Phaser.Geom.Circle(0, 0, 20);
                     container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
                     
@@ -3860,7 +3897,7 @@ class GameScene extends Phaser.Scene {
                 this.renderShips(this.players);
                 
                 // Re-highlight movement markers if current player has moves
-                const myPlayer = this.players.find(p => p.id === this.socket.id);
+                const myPlayer = this.players.find(p => p.socketId === this.socket.id);
                 if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship && myPlayer.ship.position) {
                     const pos = myPlayer.ship.position;
                     const stealthMode = myPlayer.stealth || false;

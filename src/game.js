@@ -52,10 +52,38 @@ class Game {
             'Delivery': 2, 'Warp': 2, 'Stealth': 2, 'Data Switch': 2, 'Jump': 2,
             'Glitch': 2, 'I.D. Fraud': 1, 'Replicator': 1, 'Breakdown': 1, 'Root': 1, 'EMP': 1
         };
+        
+        const functionCardDescriptions = {
+            'Repair Bot': 'Repair your ship after breakdown',
+            'Mishap': 'Force another player to re-roll dice',
+            'Rebound': 'Return to your previous position',
+            'Market Shift': 'Change a planet\'s market color',
+            'Hijack': 'Steal cargo from another player',
+            'Upload': 'Draw 3 depot cards',
+            'Impulse': 'Move 3 extra spaces',
+            'Expired license': 'Block another player\'s turn',
+            'Market Regulation': 'Prevent market manipulation',
+            'Free Port': 'Deliver cargo to any planet',
+            'Hinder': 'Reduce another player\'s movement',
+            'Recall': 'Return to hub instantly',
+            'Jammer': 'Disable another player\'s function cards',
+            'Jettison': 'Discard cargo to move faster',
+            'Delivery': 'Instant cargo delivery bonus',
+            'Warp': 'Teleport to any tile',
+            'Stealth': 'Ignore movement restrictions',
+            'Data Switch': 'Swap depot cards with another player',
+            'Jump': 'Skip over obstacles',
+            'Glitch': 'Cause random effect on target player',
+            'I.D. Fraud': 'Steal another player\'s identity',
+            'Replicator': 'Copy another function card',
+            'Breakdown': 'Force a player\'s ship to break down',
+            'Root': 'Gain admin access to game systems',
+            'EMP': 'Disable all electronic systems in range'
+        };
 
         for (const name in functionCardData) {
             for (let i = 0; i < functionCardData[name]; i++) {
-                functionCards.push(new FunctionCard(name, ''));
+                functionCards.push(new FunctionCard(name, functionCardDescriptions[name] || ''));
             }
         }
 
@@ -64,13 +92,47 @@ class Game {
     }
 
     setupPlayers(playerNames) {
+        const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#FFD93D'];
+        
         for (let i = 0; i < playerNames.length; i++) {
-            const player = new Player(i, playerNames[i]);
+            const player = new Player(i, playerNames[i], colors[i % colors.length]);
             const ship = new Ship();
             ship.position = this.board.hub.position;
             player.ship = ship;
             this.players.push(player);
         }
+    }
+
+    dealInitialCards() {
+        // Deal depot cards evenly to players
+        const cardsPerPlayer = Math.floor((this.cargoDeck.cards.length - 10) / this.players.length);
+        
+        for (const player of this.players) {
+            // Deal depot cards
+            for (let i = 0; i < cardsPerPlayer; i++) {
+                const card = this.cargoDeck.draw();
+                if (card) {
+                    player.depot.push(card);
+                }
+            }
+            
+            // Deal initial 3 cargo cards from depot
+            for (let i = 0; i < 3; i++) {
+                if (player.depot.length > 0) {
+                    player.cargo.push(player.depot.shift());
+                }
+            }
+            
+            // Deal 2 function cards to each player
+            for (let i = 0; i < 2; i++) {
+                const functionCard = this.functionDeck.draw();
+                if (functionCard) {
+                    player.functionCards.push(functionCard);
+                }
+            }
+        }
+        
+        console.log('[DEBUG] Server Log: Function cards dealt - Player 0 has', this.players[0]?.functionCards.length, 'function cards');
     }
 
     setupMarkets() {
@@ -92,6 +154,23 @@ class Game {
         player.ship = ship;
         this.players.push(player);
         return player;
+    }
+
+    removePlayer(socketId) {
+        const playerIndex = this.players.findIndex(p => p.socketId === socketId);
+        if (playerIndex !== -1) {
+            const removedPlayer = this.players.splice(playerIndex, 1)[0];
+            
+            // If the removed player was the current player, advance to next player
+            if (this.currentPlayer && this.currentPlayer.socketId === socketId && this.players.length > 0) {
+                this.currentPlayer = this.players[0];
+            } else if (this.players.length === 0) {
+                this.currentPlayer = null;
+            }
+            
+            return removedPlayer;
+        }
+        return null;
     }
 
     start() {
@@ -138,6 +217,12 @@ class Game {
             }
         }
         return false;
+    }
+
+    rollDice() {
+        const die1 = Math.floor(Math.random() * 6) + 1;
+        const die2 = Math.floor(Math.random() * 6) + 1;
+        return [die1, die2];
     }
 
     nextTurn() {
@@ -411,6 +496,100 @@ class Game {
             }
         }
         return false;
+    }
+
+    isPlayerOnHub(player) {
+        if (!player || !player.ship) {
+            console.log('[isPlayerOnHub] Player or ship missing');
+            return false;
+        }
+        const hubPos = this.board.hub.position;
+        const shipPos = player.ship.position;
+        console.log('[isPlayerOnHub] Comparing - Hub:', hubPos, 'Ship:', shipPos);
+        const onHub = shipPos.q === hubPos.q && shipPos.r === hubPos.r;
+        console.log('[isPlayerOnHub] Result:', onHub);
+        return onHub;
+    }
+
+    handleHubArrival(socketId) {
+        const player = this.players.find(p => p.socketId === socketId);
+        if (!player) return { success: false, message: 'Player not found' };
+
+        const hadNoCargo = player.cargo.length === 0;
+        console.log(`[handleHubArrival] Player ${player.name} - hadNoCargo: ${hadNoCargo}, cargo: ${player.cargo.length}, depot: ${player.depot.length}`);
+
+        // Fill cargo to capacity from depot
+        while (player.cargo.length < player.ship.cargoCapacity && player.depot.length > 0) {
+            player.cargo.push(player.depot.shift());
+        }
+
+        // Only draw 1 function card if they had NO cargo when they arrived
+        if (hadNoCargo) {
+            const card = this.functionDeck.draw();
+            if (card) {
+                player.functionCards.push(card);
+                console.log(`[handleHubArrival] Player ${player.name} had no cargo, gave 1 function card: ${card.name}`);
+            }
+        } else {
+            console.log(`[handleHubArrival] Player ${player.name} had cargo, no function card given`);
+        }
+
+        return {
+            success: true,
+            message: hadNoCargo 
+                ? `${player.name} arrived at the hub! Cargo refilled and received 1 function card.`
+                : `${player.name} arrived at the hub! Cargo refilled.`,
+            cargoCount: player.cargo.length,
+            functionCardCount: player.functionCards.length,
+            hadNoCargo: hadNoCargo
+        };
+    }
+
+    deliverCargo(socketId, planetQ, planetR, cargoIndex) {
+        const player = this.players.find(p => p.socketId === socketId);
+        if (!player) return { success: false, message: 'Player not found' };
+
+        // Find the planet at the given position
+        const planet = this.board.tiles.find(tile => 
+            tile instanceof Planet && tile.position.q === planetQ && tile.position.r === planetR
+        );
+
+        if (!planet) return { success: false, message: 'No planet at this location' };
+        if (!planet.market) return { success: false, message: 'This planet has no market' };
+
+        const cargoCard = player.cargo[cargoIndex];
+        if (!cargoCard) return { success: false, message: 'No cargo at this index' };
+        if (cargoCard.locked) return { success: false, message: 'This cargo is locked' };
+
+        const market = planet.market;
+        const colorMatch = cargoCard.color === market.color || cargoCard.color === 'wild' || market.color === 'wild';
+        const typeMatch = cargoCard.type === market.type || cargoCard.type === 'wild' || market.type === 'wild';
+        
+        if (!colorMatch && !typeMatch) {
+            return { success: false, message: 'Cargo does not match market requirements' };
+        }
+
+        const exactMatch = cargoCard.color === market.color && cargoCard.type === market.type;
+        const points = exactMatch ? 2 : 1;
+
+        // Remove cargo and update score
+        player.cargo.splice(cargoIndex, 1);
+        player.score = (player.score || 0) + points;
+
+        // Draw new market card
+        const newMarketCard = this.cargoDeck.draw();
+        if (newMarketCard) {
+            planet.market = newMarketCard;
+        }
+
+        return {
+            success: true,
+            message: `Delivered cargo for ${points} point${points > 1 ? 's' : ''}!`,
+            points: points,
+            exactMatch: exactMatch,
+            newScore: player.score,
+            newMarket: planet.market
+        };
     }
 }
 

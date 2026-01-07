@@ -100,6 +100,7 @@ io.on('connection', (socket) => {
         io.emit('lobbyUpdate', { availableGames: getAvailableGames() });
         
         // Send player list to game room
+        console.log('[SERVER DEBUG] Player colors on server:', game.players.map(p => ({ name: p.name, color: p.color })));
         io.to(gameId).emit('playersUpdate', game.players);
     });
 
@@ -226,6 +227,10 @@ io.on('connection', (socket) => {
 
             game.start();
             
+            // Deal initial cards to all players
+            game.dealInitialCards();
+            console.log('Initial cards dealt to players');
+            
             // Restore console.log
             console.log = originalLog;
 
@@ -252,11 +257,11 @@ io.on('connection', (socket) => {
             metadata.turnPhase = 'roll';
             if (game.players.length > 0) {
                 console.log(`Random starting player: ${game.players[metadata.currentTurnIndex].name} (index ${metadata.currentTurnIndex})`);
-                console.log(`Starting player ID: ${game.players[metadata.currentTurnIndex].id}`);
-                console.log('All player IDs:', game.players.map(p => ({ name: p.name, id: p.id })));
+                console.log(`Starting player socket ID: ${game.players[metadata.currentTurnIndex].socketId}`);
+                console.log('All player IDs:', game.players.map(p => ({ name: p.name, id: p.id, socketId: p.socketId })));
                 
                 const turnData = {
-                    currentPlayerId: game.players[metadata.currentTurnIndex].id,
+                    currentPlayerId: game.players[metadata.currentTurnIndex].socketId,
                     currentPlayerName: game.players[metadata.currentTurnIndex].name,
                     turnIndex: metadata.currentTurnIndex,
                     phase: metadata.turnPhase
@@ -299,11 +304,11 @@ io.on('connection', (socket) => {
         
         if (!game || !metadata) return;
         
-        const player = game.players.find(p => p.id === socket.id);
+        const player = game.players.find(p => p.socketId === socket.id);
         
         // Check if it's this player's turn and they're in roll phase
-        if (game.players[metadata.currentTurnIndex].id !== socket.id) {
-            console.log('Not your turn!');
+        if (game.players[metadata.currentTurnIndex].socketId !== socket.id) {
+            console.log('Not your turn! Current:', game.players[metadata.currentTurnIndex].socketId, 'You:', socket.id);
             return;
         }
         
@@ -312,6 +317,7 @@ io.on('connection', (socket) => {
             return;
         }
         
+        console.log('Rolling dice for player:', player.name);
         const result = game.rollDice();
         if (player) {
             player.movesLeft = result[0] + result[1];
@@ -370,11 +376,11 @@ io.on('connection', (socket) => {
         
         if (!game || !metadata) return;
         
-        const player = game.players.find(p => p.id === socket.id);
-        const targetPlayer = data.targetId ? game.players.find(p => p.id === data.targetId) : null;
+        const player = game.players.find(p => p.socketId === socket.id);
+        const targetPlayer = data.targetId ? game.players.find(p => p.socketId === data.targetId) : null;
         
         // Check if it's this player's turn and they're in roll phase
-        if (game.players[metadata.currentTurnIndex].id !== socket.id) {
+        if (game.players[metadata.currentTurnIndex].socketId !== socket.id) {
             console.log('Not your turn!');
             return;
         }
@@ -913,7 +919,7 @@ io.on('connection', (socket) => {
         
         if (!game) return;
         
-        const player = game.players.find(p => p.id === socket.id);
+        const player = game.players.find(p => p.socketId === socket.id);
         if (player) {
             console.log(`Player ${player.name} movesLeft: ${player.movesLeft}, cost: ${data.cost}`);
             if (player.movesLeft >= data.cost) {
@@ -940,12 +946,12 @@ io.on('connection', (socket) => {
         if (!game || !metadata) return;
         
         // Check if it's this player's turn
-        if (game.players[metadata.currentTurnIndex].id !== socket.id) {
+        if (game.players[metadata.currentTurnIndex].socketId !== socket.id) {
             console.log('Not your turn to end!');
             return;
         }
         
-        const player = game.players.find(p => p.id === socket.id);
+        const player = game.players.find(p => p.socketId === socket.id);
         
         // Check if player is on hub - handle hub arrival
         if (player && game.isPlayerOnHub(player)) {
@@ -970,7 +976,7 @@ io.on('connection', (socket) => {
         metadata.turnPhase = 'roll'; // Reset to roll phase for next player
         
         io.to(gameId).emit('turnChanged', {
-            currentPlayerId: game.players[metadata.currentTurnIndex].id,
+            currentPlayerId: game.players[metadata.currentTurnIndex].socketId,
             currentPlayerName: game.players[metadata.currentTurnIndex].name,
             turnIndex: metadata.currentTurnIndex,
             phase: metadata.turnPhase
@@ -985,7 +991,7 @@ io.on('connection', (socket) => {
         
         if (!game || !metadata) return;
         
-        const player = game.players.find(p => p.id === socket.id);
+        const player = game.players.find(p => p.socketId === socket.id);
         if (!player) return;
         
         // Player must be on a planet to deliver cargo
