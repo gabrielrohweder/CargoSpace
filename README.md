@@ -62,7 +62,7 @@ Each player may turn over the top 3 cards of their  depot. These cards are calle
 Play begins with player who has the most matching cargo cards. For instance, a player with three 'food' cards. If there is a tie between matching cargo types, the tie goes to the player having the most matching colors 
 If there is a tie between these, both players forfeit first turn and the turn goes to the player having the second most matching cargo cards. Etc
 
-Movement is done by rolling dice, though because this is a video game version of a board game, I may change this. Lets keep the dice in for now though. There are two six sided dice (these can be represented by a roll button which produces results 2 - 12)
+Movement is done by rolling dice. There are two six-sided dice
 If doubles are rolled, that player must choose to draw a function card or place the black hole on any eligible tile, blocking movement for all players through that tile.
 The player can then move up to the number of spaces rolled. They do not have to move the entire amount.
 A player cannot move through an asteroid belt tile, without using a special function card (see above)
