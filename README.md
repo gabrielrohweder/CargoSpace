@@ -1,3 +1,4 @@
+# Cargo Space
 ![Cartoon astronaut](public/assets/images/splash_screen.png)
 
 This game is a boardgame, with 2 - 6 players.
