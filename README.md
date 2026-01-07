@@ -1,5 +1,8 @@
 # Cargo Space
-![Cartoon astronaut](public/assets/images/splash_screen.png)
+
+<p align="center">
+  <img src="public/assets/images/splash_screen.png" width="300" />
+</p>
 
 This game is a boardgame, with 2 - 6 players.
 
