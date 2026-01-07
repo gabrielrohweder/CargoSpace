@@ -3,7 +3,7 @@ const Grid = require('./grid');
 const Planet = require('./planet');
 
 class Board {
-    constructor(movementTiles = 28) {
+    constructor(movementTiles = 28, includeAsteroids = true) {
         this.hub = null;
         this.tiles = [];
         this.unplacedTiles = [];
@@ -12,6 +12,7 @@ class Board {
         this.grid = new Grid(100); // Set a scale for the grid
         this.lastPlacedTile = null;
         this.movementTiles = movementTiles;
+        this.includeAsteroids = includeAsteroids;
     }
 
     generate() {
@@ -45,7 +46,7 @@ class Board {
             // Create the triangular tiles
             const tileCounts = {
                 [TileType.TELEPORTATION]: 2,
-                [TileType.ASTEROID_BELT]: 2,
+                [TileType.ASTEROID_BELT]: this.includeAsteroids ? 2 : 0,
                 [TileType.LANDING]: 6,
                 [TileType.MOVEMENT]: this.movementTiles
             };

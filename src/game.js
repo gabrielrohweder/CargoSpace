@@ -6,8 +6,8 @@ const Planet = require('./planet');
 const { TileType } = require('./tile');
 
 class Game {
-    constructor(movementTiles = 6) {
-        this.board = new Board();
+    constructor(movementTiles = 6, asteroidBelts = true) {
+        this.board = new Board(movementTiles, asteroidBelts);
         this.players = [];
         this.cargoDeck = null;
         this.functionDeck = null;
@@ -54,31 +54,31 @@ class Game {
         };
         
         const functionCardDescriptions = {
-            'Repair Bot': 'Repair your ship after breakdown',
-            'Mishap': 'Force another player to re-roll dice',
-            'Rebound': 'Return to your previous position',
-            'Market Shift': 'Change a planet\'s market color',
-            'Hijack': 'Steal cargo from another player',
-            'Upload': 'Draw 3 depot cards',
-            'Impulse': 'Move 3 extra spaces',
-            'Expired license': 'Block another player\'s turn',
-            'Market Regulation': 'Prevent market manipulation',
-            'Free Port': 'Deliver cargo to any planet',
-            'Hinder': 'Reduce another player\'s movement',
-            'Recall': 'Return to hub instantly',
-            'Jammer': 'Disable another player\'s function cards',
-            'Jettison': 'Discard cargo to move faster',
-            'Delivery': 'Instant cargo delivery bonus',
-            'Warp': 'Teleport to any tile',
-            'Stealth': 'Ignore movement restrictions',
-            'Data Switch': 'Swap depot cards with another player',
-            'Jump': 'Skip over obstacles',
-            'Glitch': 'Cause random effect on target player',
-            'I.D. Fraud': 'Steal another player\'s identity',
-            'Replicator': 'Copy another function card',
-            'Breakdown': 'Force a player\'s ship to break down',
-            'Root': 'Gain admin access to game systems',
-            'EMP': 'Disable all electronic systems in range'
+            'Repair Bot': 'Unlock target player\'s cargo',
+            'Mishap': 'Lock out target player\'s cargo',
+            'Rebound': 'Target player returns to the hub',
+            'Market Shift': 'Change market of any planet with top discard card',
+            'Hijack': 'Take cargo from player & lock their remaining cargo',
+            'Upload': 'Place one cargo onto another player\'s depot',
+            'Impulse': 'Target shuffles all function cards into deck',
+            'Expired license': 'Target puts all cargo at bottom of depot',
+            'Market Regulation': 'Switch any two planetary markets',
+            'Free Port': 'Play any cargo card on your current planet',
+            'Hinder': 'Place the black hole where you choose',
+            'Recall': 'Send player to Hub, fill cargo, no function card',
+            'Jammer': 'Lock one cargo for each player (including you)',
+            'Jettison': 'Target shuffles one cargo into discard deck',
+            'Delivery': 'Target player fills cargo slots from depot',
+            'Warp': 'Target player moves to a random planet',
+            'Stealth': 'Move 4 spaces, nothing blocks movement',
+            'Data Switch': 'Switch cargo cards between any two players',
+            'Jump': 'Target jumps to any planet of your choice',
+            'Glitch': 'Draw function card, move up to 10 spaces',
+            'I.D. Fraud': 'Target loads open cargo slots from your depot',
+            'Replicator': 'Reveal & play this as any of your function cards',
+            'Breakdown': 'Target player skips their next turn',
+            'Root': 'Look at target\'s function cards, play one as your own',
+            'EMP': 'All players shuffle function cards into deck'
         };
 
         for (const name in functionCardData) {
@@ -146,8 +146,9 @@ class Game {
     }
 
     addPlayer(socketId, playerName) {
+        const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#FFD93D'];
         const playerId = this.players.length;
-        const player = new Player(playerId, playerName);
+        const player = new Player(playerId, playerName, colors[playerId % colors.length]);
         player.socketId = socketId;
         const ship = new Ship();
         ship.position = this.board.hub.position;
@@ -569,24 +570,44 @@ class Game {
             return { success: false, message: 'Cargo does not match market requirements' };
         }
 
-        const exactMatch = cargoCard.color === market.color && cargoCard.type === market.type;
+        // Exact match only if BOTH color and type match (no wildcards)
+        const exactMatch = cargoCard.color === market.color && cargoCard.type === market.type && 
+                          cargoCard.color !== 'wild' && market.color !== 'wild' && 
+                          cargoCard.type !== 'wild' && market.type !== 'wild';
         const points = exactMatch ? 2 : 1;
 
-        // Remove cargo and update score
+        console.log(`[deliverCargo] Cargo: ${cargoCard.type}-${cargoCard.color}, Market: ${market.type}-${market.color}, Exact Match: ${exactMatch}`);
+        console.log(`[deliverCargo] BEFORE: Player ${player.name} has ${player.cargo.length} cargo cards`);
+
+        // Remove cargo from player's hand
         player.cargo.splice(cargoIndex, 1);
         player.score = (player.score || 0) + points;
+        
+        console.log(`[deliverCargo] AFTER: Player ${player.name} has ${player.cargo.length} cargo cards`);
 
-        // Draw new market card
-        const newMarketCard = this.cargoDeck.draw();
-        if (newMarketCard) {
-            planet.market = newMarketCard;
+        // If exact match (both type and color), award a function card
+        let bonusFunctionCard = null;
+        if (exactMatch && this.functionCardDeck && this.functionCardDeck.cards.length > 0) {
+            bonusFunctionCard = this.functionCardDeck.draw();
+            if (bonusFunctionCard) {
+                player.functionCards.push(bonusFunctionCard);
+                console.log(`[deliverCargo] Awarded bonus function card: ${bonusFunctionCard.name} to ${player.name}`);
+            }
         }
+
+        // The delivered cargo card becomes the new market
+        // Old market goes to discard pile
+        if (this.discardPile) {
+            this.discardPile.add(planet.market);
+        }
+        planet.market = cargoCard;
 
         return {
             success: true,
-            message: `Delivered cargo for ${points} point${points > 1 ? 's' : ''}!`,
+            message: `Delivered cargo for ${points} point${points > 1 ? 's' : ''}!${exactMatch ? ' Bonus function card awarded!' : ''}`,
             points: points,
             exactMatch: exactMatch,
+            bonusFunctionCard: bonusFunctionCard,
             newScore: player.score,
             newMarket: planet.market
         };

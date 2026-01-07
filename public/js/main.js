@@ -689,6 +689,7 @@ class UIScene extends Phaser.Scene {
         console.log('Current player found:', !!currentPlayer);
         if (currentPlayer) {
             console.log('Current player cargo:', currentPlayer.cargo);
+            console.log(`[CLIENT DEBUG] Cargo count: ${currentPlayer.cargo.length}, items:`, currentPlayer.cargo.map(c => c ? `${c.type}-${c.color}` : 'empty'));
             console.log('Current player depot:', currentPlayer.depot);
             console.log('Current player functionCards:', currentPlayer.functionCards);
         }
@@ -886,6 +887,14 @@ class UIScene extends Phaser.Scene {
         this.currentPlayerGroup.add(this.add.text(currentX, panelY + 20, 'Function Cards', { font: '24px Arial', fill: '#ffffff' }));
 
         player.functionCards.forEach((card, index) => {
+            // Determine if this card requires a target player
+            const cardsRequiringTarget = [
+                'Repair Bot', 'Mishap', 'Rebound', 'Recall', 'Impulse', 
+                'Expired license', 'Delivery', 'Hijack', 'Upload', 'Warp', 
+                'Jump', 'Breakdown', 'I.D. Fraud', 'Data Switch', 'Jettison', 'Jammer'
+            ];
+            card.requiresTarget = cardsRequiringTarget.includes(card.name);
+            
             const funcCardWidth = cardWidth * 1.5;
             const cardX = currentX + (funcCardWidth / 2) + (index * (funcCardWidth + spacing));
             const cardY = centerY + 20;
@@ -1398,10 +1407,20 @@ class UIScene extends Phaser.Scene {
             const playerBtn = this.add.rectangle(0, btnY, buttonWidth, buttonHeight, btnColor).setInteractive();
             playerBtn.setStrokeStyle(2, 0xffffff);
             
-            const playerText = this.add.text(0, btnY, `${player.name}${isMe ? ' (You)' : ''}`, {
+            // Add colored pawn indicator next to player name
+            const pawnSize = 12;
+            const pawnX = -buttonWidth/2 + 20;
+            const playerColor = player.color ? parseInt(player.color.substring(1), 16) : 0xFF6B6B;
+            const pawnGraphics = this.add.graphics();
+            pawnGraphics.fillStyle(playerColor, 1);
+            pawnGraphics.fillCircle(pawnX, btnY, pawnSize);
+            pawnGraphics.lineStyle(2, 0xffffff);
+            pawnGraphics.strokeCircle(pawnX, btnY, pawnSize);
+            
+            const playerText = this.add.text(pawnX + 25, btnY, `${player.name}${isMe ? ' (You)' : ''}`, {
                 font: '18px Arial',
                 fill: '#ffffff'
-            }).setOrigin(0.5);
+            }).setOrigin(0, 0.5);
             
             playerBtn.on('pointerdown', () => {
                 console.log('Target player selected:', player.name, player.id);
@@ -1434,7 +1453,7 @@ class UIScene extends Phaser.Scene {
             playerBtn.on('pointerover', () => playerBtn.fillColor = isMe ? 0x6666CC : 0x666666);
             playerBtn.on('pointerout', () => playerBtn.fillColor = btnColor);
             
-            elements.push(playerBtn, playerText);
+            elements.push(playerBtn, playerText, pawnGraphics);
         });
         
         // Add cancel button
@@ -2369,6 +2388,7 @@ class GameScene extends Phaser.Scene {
 
         this.socket.on('playersUpdate', (players) => {
             console.log('GameScene received playersUpdate:', players.length, 'players');
+            console.log('[CLIENT DEBUG] Player colors received:', players.map(p => ({ name: p.name, color: p.color })));
             console.log('TEST: Code is executing after playersUpdate log');
             this.players = players;
             
@@ -3188,8 +3208,17 @@ class GameScene extends Phaser.Scene {
                     if (hubTile && hubTile.type === 'hub' && hubTile.sprite) {
                         const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
                         if (hubKeys && hubKeys.has(checkKey)) {
-                            neighborTile = hubTile;
-                            neighborKey = '0,0,3';
+                            // This neighbor is part of the hub
+                            // Create a virtual tile entry for this hub hex so BFS can traverse it
+                            neighborTile = {
+                                type: 'hub',
+                                sprite: hubTile.sprite,
+                                q: neighbor.q,
+                                r: neighbor.r,
+                                s: 3,
+                                occupiedPositions: hubTile.occupiedPositions
+                            };
+                            neighborKey = checkKey;
                             neighborS = 3;
                             console.log(`      Found hub via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r}`);
                         }
@@ -3292,6 +3321,20 @@ class GameScene extends Phaser.Scene {
             startKey = `${q},${r},${3}`;
             startTile = this.tileData.get(startKey);
         }
+        
+        // Check if this position is part of the hub (even if not the center hex)
+        if (!startTile) {
+            const hubTile = this.tileData.get('0,0,3');
+            if (hubTile && hubTile.type === 'hub' && hubTile.sprite) {
+                const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
+                const checkKey = `${q},${r},3`;
+                if (hubKeys && hubKeys.has(checkKey)) {
+                    startTile = hubTile;
+                    console.log(`[BFS] Player is on hub hex ${q},${r}, using hub tile data`);
+                }
+            }
+        }
+        
         const startSCanonical = startTile && startTile.type !== 'movement' ? 3 : s;
         startKey = `${q},${r},${startSCanonical}`;
 
@@ -3394,7 +3437,7 @@ class GameScene extends Phaser.Scene {
                     tile = this.tileData.get(key);
                 }
 
-                // Check if this position is part of a multi-hex tile (hub or planet)
+                // Check if this position is part of a multi-hex tile (hub, planet, asteroid, etc.)
                 // These tiles only have one entry in tileData but all positions in spriteKeyMap
                 if (!tile) {
                     const checkKey = `${neighbor.q},${neighbor.r},3`;
@@ -3411,17 +3454,17 @@ class GameScene extends Phaser.Scene {
                         }
                     }
                     
-                    // If not hub, check all planets via spriteKeyMap
+                    // If not hub, check all other tiles via spriteKeyMap (planets, asteroids, black holes, etc.)
                     if (!tile) {
                         for (const [sprite, keys] of this.spriteKeyMap.entries()) {
                             if (keys.has(checkKey)) {
                                 // Find this sprite's canonical tileData entry
                                 for (const [tileKey, tileEntry] of this.tileData.entries()) {
-                                    if (tileEntry.sprite === sprite && tileEntry.type === 'planet') {
+                                    if (tileEntry.sprite === sprite) {
                                         tile = tileEntry;
                                         key = tileKey;
                                         neighborS = 3;
-                                        console.log(`[PLANET LOOKUP] Found planet via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r} -> ${tileKey}`);
+                                        console.log(`[TILE LOOKUP] Found ${tileEntry.type} via spriteKeyMap for neighbor ${neighbor.q},${neighbor.r} -> ${tileKey}`);
                                         break;
                                     }
                                 }
@@ -3492,6 +3535,8 @@ class GameScene extends Phaser.Scene {
                 const allowsMultiplePlayers = tile.type === 'hub' || tile.type === 'planet';
                 const isOccupied = !stealthMode && !allowsMultiplePlayers && occupiedTiles.has(occupancyKey);
 
+                // Blocked tiles (asteroids, black holes) cannot be traversed at all
+                // This prevents pathfinding through them to reach tiles beyond
                 if (isBlocked || isOccupied) {
                     continue;
                 }

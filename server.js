@@ -58,7 +58,8 @@ io.on('connection', (socket) => {
         console.log('Creating game:', data);
         const gameId = generateGameId();
         const movementTiles = data.movementTiles || 6;
-        const game = new Game(movementTiles);
+        const asteroidBelts = data.asteroidBelts !== undefined ? data.asteroidBelts : true;
+        const game = new Game(movementTiles, asteroidBelts);
         game.setup([]); // Initialize decks and markets
         
         // Add creator as first player
@@ -1025,7 +1026,7 @@ io.on('connection', (socket) => {
                 planetR: planetR,
                 newMarket: result.newMarket,
                 exactMatch: result.exactMatch,
-                bonusCard: result.bonusCard ? result.bonusCard.name : null
+                bonusCard: result.bonusFunctionCard ? result.bonusFunctionCard.name : null
             });
             
             if (planet) {
