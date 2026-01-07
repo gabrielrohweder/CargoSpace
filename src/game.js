@@ -6,13 +6,14 @@ const Planet = require('./planet');
 const { TileType } = require('./tile');
 
 class Game {
-    constructor() {
+    constructor(movementTiles = 6) {
         this.board = new Board();
         this.players = [];
         this.cargoDeck = null;
         this.functionDeck = null;
         this.discardPile = new Deck();
         this.currentPlayer = null;
+        this.movementTiles = movementTiles;
     }
 
     setup(playerNames) {
@@ -80,6 +81,17 @@ class Game {
                 planet.market = card;
             }
         }
+    }
+
+    addPlayer(socketId, playerName) {
+        const playerId = this.players.length;
+        const player = new Player(playerId, playerName);
+        player.socketId = socketId;
+        const ship = new Ship();
+        ship.position = this.board.hub.position;
+        player.ship = ship;
+        this.players.push(player);
+        return player;
     }
 
     start() {
