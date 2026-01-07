@@ -606,6 +606,16 @@ io.on('connection', (socket) => {
                             }
                             planet.market = newMarket;
                             effectMessage = `Changed market on a planet`;
+                            
+                            // Emit market update to all clients
+                            const positions = planet.occupiedPositions || [planet.position];
+                            positions.forEach(pos => {
+                                io.to(gameId).emit('marketUpdated', {
+                                    planetQ: parseInt(pos.q),
+                                    planetR: parseInt(pos.r),
+                                    market: newMarket
+                                });
+                            });
                         } else if (planet) {
                             effectMessage = 'No cards in discard pile to shift market';
                         } else {

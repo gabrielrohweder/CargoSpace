@@ -3295,9 +3295,25 @@ class GameScene extends Phaser.Scene {
         const startSCanonical = startTile && startTile.type !== 'movement' ? 3 : s;
         startKey = `${q},${r},${startSCanonical}`;
 
-        const queue = [{ q, r, s: startSCanonical, dist: 0 }];
+        // For hub/planet tiles, we need to start BFS from ALL occupied hexes
+        const queue = [];
         const bestDistances = new Map();
-        bestDistances.set(startKey, 0);
+        
+        if (startTile && startTile.occupiedPositions && startTile.occupiedPositions.length > 1) {
+            console.log(`Starting BFS from multi-hex tile (${startTile.type}) with ${startTile.occupiedPositions.length} positions`);
+            // Add all occupied positions to the initial queue with distance 0
+            startTile.occupiedPositions.forEach(pos => {
+                const initKey = `${parseInt(pos.q)},${parseInt(pos.r)},${startSCanonical}`;
+                if (!bestDistances.has(initKey)) {
+                    queue.push({ q: parseInt(pos.q), r: parseInt(pos.r), s: startSCanonical, dist: 0 });
+                    bestDistances.set(initKey, 0);
+                }
+            });
+            console.log(`Added ${queue.length} initial positions to queue`);
+        } else {
+            queue.push({ q, r, s: startSCanonical, dist: 0 });
+            bestDistances.set(startKey, 0);
+        }
 
         console.log('Starting BFS loop...');
 
