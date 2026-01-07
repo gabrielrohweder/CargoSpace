@@ -1252,7 +1252,25 @@ class UIScene extends Phaser.Scene {
                         // Show player selection dialog
                         this.showPlayerSelectionDialog(card, index);
                     } else if (card.name === 'Free Port') {
-                        // Free Port needs cargo selection from own cargo
+                        // Free Port needs cargo selection from own cargo and must be on a planet
+                        const gameScene = this.scene.get('GameScene');
+                        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.socketId === this.socket.id) : null;
+                        
+                        // Check if player is on a planet
+                        if (!myPlayer || !myPlayer.ship || !myPlayer.ship.position) {
+                            this.showNotification('Free Port can only be played when on a planet', 0xFF0000);
+                            return;
+                        }
+                        
+                        const playerPos = myPlayer.ship.position;
+                        const posKey = `${playerPos.q},${playerPos.r}`;
+                        const isOnPlanet = gameScene.planetSprites && gameScene.planetSprites.has(posKey);
+                        
+                        if (!isOnPlanet) {
+                            this.showNotification('Free Port can only be played when on a planet', 0xFF0000);
+                            return;
+                        }
+                        
                         if (this.turnPopup) {
                             this.turnPopup.setVisible(false);
                             try {
@@ -1265,9 +1283,8 @@ class UIScene extends Phaser.Scene {
                             } catch (e) {}
                             this.turnPopup = null;
                         }
-                        const gameScene = this.scene.get('GameScene');
-                        const myPlayer = gameScene && gameScene.players ? gameScene.players.find(p => p.socketId === this.socket.id) : null;
-                        if (myPlayer && myPlayer.cargo && myPlayer.cargo.length > 0) {
+                        
+                        if (myPlayer.cargo && myPlayer.cargo.length > 0) {
                             this.showCargoSelectionDialog({
                                 title: 'Select cargo to deliver via Free Port',
                                 cargo: myPlayer.cargo,
@@ -1712,10 +1729,26 @@ class UIScene extends Phaser.Scene {
         gameScene.planetSprites.forEach((planetData, key) => {
             if (planetData.tile && planetData.tile.planetId && !seenPlanetIds.has(planetData.tile.planetId)) {
                 seenPlanetIds.add(planetData.tile.planetId);
-                const market = gameScene.planetMarkets.get(key);
+                
+                // Get market - try the current key first, then check all occupied positions
+                let market = gameScene.planetMarkets.get(key);
+                if (!market && planetData.tile.occupiedPositions) {
+                    // Try all occupied positions to find the market
+                    for (const pos of planetData.tile.occupiedPositions) {
+                        const posKey = `${parseInt(pos.q)},${parseInt(pos.r)}`;
+                        market = gameScene.planetMarkets.get(posKey);
+                        if (market) break;
+                    }
+                }
+                
+                // If still no market, use the tile's market directly
+                if (!market && planetData.tile.market) {
+                    market = planetData.tile.market;
+                }
+                
                 planets.push({
                     id: planetData.tile.planetId,
-                    name: planetData.tile.name || `Planet ${planets.length + 1}`,
+                    name: planetData.tile.name || `Planet ${planetData.tile.planetId + 1}`,
                     market: market,
                     posKey: key
                 });
@@ -2322,6 +2355,8 @@ class GameScene extends Phaser.Scene {
         this.load.image('planet5', 'assets/images/planet5.png');
         // Load function card image
         this.load.image('function_card', 'assets/images/function_card.png');
+        // Load splash screen
+        this.load.image('splash_screen', 'assets/images/splash_screen.png');
         // Load the animated GIF as a spritesheet
         // Note: Phaser doesn't natively support animated GIFs, we'll need to handle this differently
         this.load.image('teleporter', 'assets/images/teleporter.gif');
@@ -2361,6 +2396,28 @@ class GameScene extends Phaser.Scene {
         this.highlightedTiles = [];
         this.highlightMarkers = [];
         this.waitingForMovementMarkers = false; // Flag for auto-showing movement markers
+        
+        // Create splash screen overlay (bottom right quadrant)
+        const splashWidth = width / 2;
+        const splashHeight = height / 2;
+        const splashX = width - splashWidth / 2;
+        const splashY = height - splashHeight / 2;
+        
+        this.splashScreen = this.add.image(splashX, splashY, 'splash_screen')
+            .setOrigin(0.5, 0.5)
+            .setScrollFactor(0)
+            .setDepth(50); // Below UI layer (which is typically 100+)
+        
+        // Scale to fit quadrant while maintaining aspect ratio
+        const imgWidth = this.splashScreen.width;
+        const imgHeight = this.splashScreen.height;
+        const scaleX = splashWidth / imgWidth;
+        const scaleY = splashHeight / imgHeight;
+        const scale = Math.min(scaleX, scaleY); // Use smaller scale to fit within quadrant
+        this.splashScreen.setScale(scale);
+        
+        // Initially hide it, will show when appropriate
+        this.splashScreen.setVisible(false);
 
         this.socket.on('connect', () => {
             console.log('Connected to server!');
@@ -2378,6 +2435,10 @@ class GameScene extends Phaser.Scene {
             if (uiScene) {
                 uiScene.hideStartButton();
                 uiScene.hideWaitingMessage();
+            }
+            // Hide splash screen when game starts
+            if (this.splashScreen) {
+                this.splashScreen.setVisible(false);
             }
             this.renderBoard(data);
         });
@@ -2456,6 +2517,13 @@ class GameScene extends Phaser.Scene {
             const key = `${data.planetQ},${data.planetR}`;
             if (!this.planetMarkets) this.planetMarkets = new Map();
             this.planetMarkets.set(key, data.market);
+            
+            // Also update the tile.market in planetSprites so popup shows correct data
+            const planetSpriteData = this.planetSprites.get(key);
+            if (planetSpriteData && planetSpriteData.tile) {
+                planetSpriteData.tile.market = data.market;
+            }
+            
             this.updateMarketBadge(data.planetQ, data.planetR, data.market);
         });
 
@@ -2532,7 +2600,10 @@ class GameScene extends Phaser.Scene {
         }));
         
         if (this.gameStarted) {
-            // Game already started - hide waiting message and show board
+            // Game already started - hide waiting message, splash screen, and show board
+            if (this.splashScreen) {
+                this.splashScreen.setVisible(false);
+            }
             const uiScene = this.scene.get('UIScene');
             if (uiScene && uiScene.scene.isActive()) {
                 uiScene.hideWaitingMessage();
@@ -2551,6 +2622,10 @@ class GameScene extends Phaser.Scene {
                 this.renderBoard(data.boardState);
             }
         } else if (this.isHost) {
+            // Show splash screen while waiting
+            if (this.splashScreen) {
+                this.splashScreen.setVisible(true);
+            }
             console.log('GameScene: Signaling UIScene to show start button');
             const uiScene = this.scene.get('UIScene');
             if (uiScene && uiScene.scene.isActive()) {
@@ -2565,6 +2640,10 @@ class GameScene extends Phaser.Scene {
                 });
             }
         } else {
+            // Show splash screen while waiting
+            if (this.splashScreen) {
+                this.splashScreen.setVisible(true);
+            }
             console.log('GameScene: Signaling UIScene to show waiting message');
             const uiScene = this.scene.get('UIScene');
             if (uiScene && uiScene.scene.isActive()) {
@@ -3168,9 +3247,32 @@ class GameScene extends Phaser.Scene {
                     // Try all sub-positions for this neighboring hex
                     for (let s = 0; s <= 3; s++) {
                         const nbrKey = `${hexNbr.q},${hexNbr.r},${s}`;
-                        const nbrTile = this.tileData.get(nbrKey);
+                        let nbrTile = this.tileData.get(nbrKey);
+                        let canonicalS = s;
+                        
+                        // If not found in tileData, check spriteKeyMap for multi-hex tiles
+                        if (!nbrTile) {
+                            const checkKey = `${hexNbr.q},${hexNbr.r},3`;
+                            for (const [sprite, keys] of this.spriteKeyMap.entries()) {
+                                if (keys.has(checkKey)) {
+                                    // Find the canonical tile entry for this sprite
+                                    for (const [tileKey, tileEntry] of this.tileData.entries()) {
+                                        if (tileEntry.sprite === sprite) {
+                                            nbrTile = tileEntry;
+                                            canonicalS = 3; // Non-movement tiles use s=3
+                                            console.log(`[getNeighbors] Found ${tileEntry.type} at ${hexNbr.q},${hexNbr.r} via spriteKeyMap`);
+                                            break;
+                                        }
+                                    }
+                                    if (nbrTile) break;
+                                }
+                            }
+                        }
+                        
                         if (nbrTile) {
-                            results.push({ q: hexNbr.q, r: hexNbr.r, s: s });
+                            // Use canonical s value (3 for non-movement, actual s for movement)
+                            const finalS = nbrTile.type === 'movement' ? s : 3;
+                            results.push({ q: hexNbr.q, r: hexNbr.r, s: finalS });
                         }
                     }
                 });
@@ -3950,6 +4052,23 @@ class GameScene extends Phaser.Scene {
         if (this.starfield1) this.starfield1.setSize(width, height);
         if (this.starfield2) this.starfield2.setSize(width, height);
         if (this.starfield3) this.starfield3.setSize(width, height);
+        
+        // Update splash screen position and size for bottom right quadrant
+        if (this.splashScreen) {
+            const splashWidth = width / 2;
+            const splashHeight = height / 2;
+            const splashX = width - splashWidth / 2;
+            const splashY = height - splashHeight / 2;
+            this.splashScreen.setPosition(splashX, splashY);
+            
+            // Scale to fit quadrant while maintaining aspect ratio
+            const imgWidth = this.splashScreen.texture.source[0].width;
+            const imgHeight = this.splashScreen.texture.source[0].height;
+            const scaleX = splashWidth / imgWidth;
+            const scaleY = splashHeight / imgHeight;
+            const scale = Math.min(scaleX, scaleY);
+            this.splashScreen.setScale(scale);
+        }
         
         // Re-render board and ships with new camera dimensions to fix positioning
         if (this.lastBoardData) {

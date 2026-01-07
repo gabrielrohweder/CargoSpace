@@ -525,8 +525,9 @@ class Game {
         }
 
         // Only draw 1 function card if they had NO cargo when they arrived
+        let card = null;
         if (hadNoCargo) {
-            const card = this.functionDeck.draw();
+            card = this.functionDeck.draw();
             if (card) {
                 player.functionCards.push(card);
                 console.log(`[handleHubArrival] Player ${player.name} had no cargo, gave 1 function card: ${card.name}`);
@@ -542,7 +543,9 @@ class Game {
                 : `${player.name} arrived at the hub! Cargo refilled.`,
             cargoCount: player.cargo.length,
             functionCardCount: player.functionCards.length,
-            hadNoCargo: hadNoCargo
+            hadNoCargo: hadNoCargo,
+            bonusCard: hadNoCargo ? card : null,
+            cardsRefilled: player.cargo.length
         };
     }
 
@@ -587,8 +590,8 @@ class Game {
 
         // If exact match (both type and color), award a function card
         let bonusFunctionCard = null;
-        if (exactMatch && this.functionCardDeck && this.functionCardDeck.cards.length > 0) {
-            bonusFunctionCard = this.functionCardDeck.draw();
+        if (exactMatch && this.functionDeck && this.functionDeck.cards.length > 0) {
+            bonusFunctionCard = this.functionDeck.draw();
             if (bonusFunctionCard) {
                 player.functionCards.push(bonusFunctionCard);
                 console.log(`[deliverCargo] Awarded bonus function card: ${bonusFunctionCard.name} to ${player.name}`);
