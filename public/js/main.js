@@ -5356,16 +5356,31 @@ class GameScene extends Phaser.Scene {
                         continue;
                     }
 
-                    const prevBest = bestDistances.get(key);
+                    // For multi-hex tiles (hub, planets), use canonical key so only one entry is created
+                    // This ensures only one marker and allows BFS to continue through the tile
+                    let canonicalKey = key;
+                    let queueQ = neighbor.q;
+                    let queueR = neighbor.r;
+                    let queueS = neighborS;
+                    
+                    if (tile.type === "hub" || tile.type === "planet" || tile.type === "landing") {
+                        // Use the tile's registered position as canonical key
+                        canonicalKey = `${tile.q},${tile.r},3`;
+                        queueQ = tile.q;
+                        queueR = tile.r;
+                        queueS = 3;
+                    }
+
+                    const prevBest = bestDistances.get(canonicalKey);
                     if (prevBest !== undefined && dist >= prevBest) {
                         continue;
                     }
 
-                    bestDistances.set(key, dist);
+                    bestDistances.set(canonicalKey, dist);
                     queue.push({
-                        q: neighbor.q,
-                        r: neighbor.r,
-                        s: neighborS,
+                        q: queueQ,
+                        r: queueR,
+                        s: queueS,
                         dist,
                     });
                 }
