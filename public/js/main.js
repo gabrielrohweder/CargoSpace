@@ -16,7 +16,7 @@ class LobbyScene extends Phaser.Scene {
             // Title
             const width = this.cameras.main.width;
             const height = this.cameras.main.height;
-            
+
             // Responsive sizing
             this.isMobile = width < 768;
             const titleFontSize = this.isMobile ? 28 : 48;
@@ -25,10 +25,15 @@ class LobbyScene extends Phaser.Scene {
             const buttonHeight = this.isMobile ? 50 : 60;
 
             const titleText = this.add
-                .text(width / 2, this.isMobile ? 30 : 40, "CargoSpace - Game Lobby", {
-                    font: `bold ${titleFontSize}px Arial`,
-                    fill: "#ffffff",
-                })
+                .text(
+                    width / 2,
+                    this.isMobile ? 30 : 40,
+                    "CargoSpace - Game Lobby",
+                    {
+                        font: `bold ${titleFontSize}px Arial`,
+                        fill: "#ffffff",
+                    },
+                )
                 .setOrigin(0.5);
 
             // Listen for lobby updates
@@ -44,7 +49,13 @@ class LobbyScene extends Phaser.Scene {
 
             // Create Game button
             const createBtn = this.add
-                .rectangle(width / 2, height - 40, buttonWidth, buttonHeight, 0x2a9d8f)
+                .rectangle(
+                    width / 2,
+                    height - 40,
+                    buttonWidth,
+                    buttonHeight,
+                    0x2a9d8f,
+                )
                 .setInteractive();
             createBtn.on("pointerdown", () => this.showCreateGamePopup());
             createBtn.on("pointerover", () => (createBtn.fillColor = 0x3bb5a3));
@@ -58,7 +69,10 @@ class LobbyScene extends Phaser.Scene {
                 .setOrigin(0.5);
 
             // Container for game list
-            this.gameListContainer = this.add.container(0, this.isMobile ? 80 : 120);
+            this.gameListContainer = this.add.container(
+                0,
+                this.isMobile ? 80 : 120,
+            );
 
             // Request initial lobby data
             if (this.socket) {
@@ -162,7 +176,7 @@ class LobbyScene extends Phaser.Scene {
     showCreateGamePopup() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
-        
+
         // Responsive popup sizing
         const popupWidth = this.isMobile ? Math.min(width - 40, 350) : 600;
         const popupHeight = this.isMobile ? Math.min(height - 80, 450) : 550;
@@ -172,7 +186,14 @@ class LobbyScene extends Phaser.Scene {
 
         // Create popup background
         const popupBg = this.add
-            .rectangle(width / 2, height / 2, popupWidth, popupHeight, 0x000000, 0.9)
+            .rectangle(
+                width / 2,
+                height / 2,
+                popupWidth,
+                popupHeight,
+                0x000000,
+                0.9,
+            )
             .setInteractive();
         popupBg.setStrokeStyle(4, 0xffffff);
         popupBg.setScrollFactor(0).setDepth(3000);
@@ -253,9 +274,9 @@ class LobbyScene extends Phaser.Scene {
 
         const tilesInput = document.createElement("input");
         tilesInput.type = "range";
-        tilesInput.value = "50";
+        tilesInput.value = "90";
         tilesInput.min = "20";
-        tilesInput.max = "100";
+        tilesInput.max = "200";
         tilesInput.style.width = this.isMobile ? "80px" : "150px";
         tilesInput.style.height = "20px";
 
@@ -272,10 +293,15 @@ class LobbyScene extends Phaser.Scene {
         yOffset += rowSpacing;
 
         // Asteroid Belts
-        const asteroidsLabel = this.add.text(labelX, yOffset, "Asteroid Belts:", {
-            font: `bold ${labelFontSize}px Arial`,
-            fill: "#ffffff",
-        });
+        const asteroidsLabel = this.add.text(
+            labelX,
+            yOffset,
+            "Asteroid Belts:",
+            {
+                font: `bold ${labelFontSize}px Arial`,
+                fill: "#ffffff",
+            },
+        );
 
         const asteroidsCheckbox = document.createElement("input");
         asteroidsCheckbox.type = "checkbox";
@@ -531,14 +557,21 @@ class UIScene extends Phaser.Scene {
         const height = this.cameras.main.height;
         this.isMobile = width < 768;
         this.leftPanelWidth = this.isMobile ? 0 : Math.min(250, width * 0.2);
-        this.bottomPanelHeight = this.isMobile ? Math.min(200, height * 0.35) : Math.min(300, height * 0.4);
+        this.bottomPanelHeight = this.isMobile
+            ? Math.min(200, height * 0.35)
+            : Math.min(300, height * 0.4);
 
         // Left Panel Background (hidden on mobile)
         this.leftPanelGraphics = this.add.graphics();
         if (this.leftPanelWidth > 0) {
             this.leftPanelGraphics.fillStyle(0x000000, 0.5);
-            this.leftPanelGraphics.fillRect(0, 0, this.leftPanelWidth, height - this.bottomPanelHeight);
-            
+            this.leftPanelGraphics.fillRect(
+                0,
+                0,
+                this.leftPanelWidth,
+                height - this.bottomPanelHeight,
+            );
+
             this.otherPlayersLabel = this.add.text(10, 10, "Other Players", {
                 font: "20px Arial",
                 fill: "#ffffff",
@@ -1168,7 +1201,9 @@ class UIScene extends Phaser.Scene {
 
         const isMobile = width < 768;
         const leftPanelWidth = isMobile ? 0 : Math.min(250, width * 0.2);
-        const bottomPanelHeight = isMobile ? Math.min(200, height * 0.35) : Math.min(300, height * 0.4);
+        const bottomPanelHeight = isMobile
+            ? Math.min(200, height * 0.35)
+            : Math.min(300, height * 0.4);
 
         this.isMobile = isMobile;
         this.leftPanelWidth = leftPanelWidth;
@@ -1179,7 +1214,12 @@ class UIScene extends Phaser.Scene {
         this.leftPanelGraphics.clear();
         if (leftPanelWidth > 0) {
             this.leftPanelGraphics.fillStyle(0x000000, 0.5);
-            this.leftPanelGraphics.fillRect(0, 0, leftPanelWidth, height - bottomPanelHeight);
+            this.leftPanelGraphics.fillRect(
+                0,
+                0,
+                leftPanelWidth,
+                height - bottomPanelHeight,
+            );
         }
 
         this.bottomPanelGraphics.clear();
@@ -3780,8 +3820,10 @@ class GameScene extends Phaser.Scene {
 
             if (pointer1.isDown && pointer2.isDown) {
                 const dist = Phaser.Math.Distance.Between(
-                    pointer1.x, pointer1.y,
-                    pointer2.x, pointer2.y
+                    pointer1.x,
+                    pointer1.y,
+                    pointer2.x,
+                    pointer2.y,
                 );
 
                 if (this.lastPinchDistance > 0) {
@@ -4750,11 +4792,34 @@ class GameScene extends Phaser.Scene {
                             };
                             neighborKey = checkKey;
                             neighborS = 3;
+                            console.log(`[NEIGHBOR DEBUG] Found hub at ${checkKey} from ${keyStr}`);
+                        } else {
+                            console.log(`[NEIGHBOR DEBUG] Hub spriteKeyMap check failed for ${checkKey} from ${keyStr}, hubKeys exists: ${!!hubKeys}`);
+                        }
+                    }
+                }
+                
+                // Also check for other multi-hex tiles in spriteKeyMap
+                if (!neighborTile) {
+                    const checkKey = `${neighbor.q},${neighbor.r},3`;
+                    for (const [sprite, keys] of this.spriteKeyMap.entries()) {
+                        if (keys.has(checkKey)) {
+                            for (const [tileKey, tileEntry] of this.tileData.entries()) {
+                                if (tileEntry.sprite === sprite) {
+                                    neighborTile = tileEntry;
+                                    neighborKey = checkKey;
+                                    neighborS = 3;
+                                    console.log(`[NEIGHBOR DEBUG] Found multi-hex tile at ${checkKey} from ${keyStr}, type: ${tileEntry.type}`);
+                                    break;
+                                }
+                            }
+                            if (neighborTile) break;
                         }
                     }
                 }
 
                 if (!neighborTile) {
+                    console.log(`[NEIGHBOR DEBUG] No tile found for neighbor ${neighbor.q},${neighbor.r},${neighbor.s} from ${keyStr}`);
                     continue;
                 }
 
@@ -4939,7 +5004,7 @@ class GameScene extends Phaser.Scene {
                 }
 
                 let currentTileData = this.tileData.get(currentKey);
-                
+
                 // Check if current position is part of the hub (hub only registered at 0,0,3)
                 if (!currentTileData) {
                     const hubTile = this.tileData.get("0,0,3");
@@ -4951,13 +5016,16 @@ class GameScene extends Phaser.Scene {
                         }
                     }
                 }
-                
+
                 // Also check for other multi-hex tiles via spriteKeyMap
                 if (!currentTileData) {
                     const checkKey = `${current.q},${current.r},3`;
                     for (const [sprite, keys] of this.spriteKeyMap.entries()) {
                         if (keys.has(checkKey)) {
-                            for (const [tileKey, tileEntry] of this.tileData.entries()) {
+                            for (const [
+                                tileKey,
+                                tileEntry,
+                            ] of this.tileData.entries()) {
                                 if (tileEntry.sprite === sprite) {
                                     currentTileData = tileEntry;
                                     break;
@@ -4967,7 +5035,7 @@ class GameScene extends Phaser.Scene {
                         }
                     }
                 }
-                
+
                 const currentSpriteKeys = currentTileData
                     ? this.spriteKeyMap.get(currentTileData.sprite)
                     : null;
