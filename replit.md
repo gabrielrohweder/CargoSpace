@@ -93,8 +93,8 @@ npm start
 ### Animated Teleporter Effects (January 2026)
 - Teleporter tiles now display animated effects instead of static images
 - createGlowParticleTexture() generates procedural red glow particles
-- createTeleporterEffect() creates: black triangular background, pulsing red border triangles (8 layers extending toward center), floating red particles with geometry mask
+- createTeleporterEffect() creates: black triangular background, 11 pulsing red triangular rings extending from outer edge (factor 1.0) to center (factor 0.0), floating red particles with geometry mask
 - Effects use Phaser time events for smooth animation with random phase offsets per teleporter
-- Original teleporter sprite is destroyed (not hidden) to prevent visual artifacts
+- Original teleporter sprite removed via boardGroup.remove(sprite, true, true) to prevent green box artifacts
 - Proper resource cleanup via cleanupTeleporterEffects() on board rebuild and scene shutdown/destroy
-- Memory leak prevention: timers, particles, graphics, and masks are all properly disposed
+- Memory leak prevention: timers, particles, graphics, and masks are all properly disposed with try-catch error handling
