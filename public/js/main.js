@@ -5122,11 +5122,6 @@ class GameScene extends Phaser.Scene {
                     current.s,
                 );
 
-                // Debug: log neighbors for first few iterations
-                if (current.dist === 0) {
-                    console.log(`[BFS DEBUG] From ${currentKey}, neighbors:`, neighbors.map(n => `${n.q},${n.r},${n.s}`));
-                }
-
                 for (const neighbor of neighbors) {
                     let neighborS = neighbor.s;
                     let key = `${neighbor.q},${neighbor.r},${neighborS}`;
@@ -5250,13 +5245,6 @@ class GameScene extends Phaser.Scene {
                                 { q: neighbor.q, r: neighbor.r },
                             ];
 
-                        // Debug: log hub back-edge validation
-                        if (tile.type === "hub") {
-                            console.log(`[HUB BACKEDGE DEBUG] tile.occupiedPositions:`, tile.occupiedPositions);
-                            console.log(`[HUB BACKEDGE DEBUG] neighborOccupiedPositions:`, neighborOccupiedPositions);
-                            console.log(`[HUB BACKEDGE DEBUG] currentQ=${currentQ}, currentR=${currentR}`);
-                        }
-
                         // For non-movement tiles, check hex adjacency
                         hasBackEdge = neighborOccupiedPositions.some(
                             (neighborPos) => {
@@ -5264,20 +5252,12 @@ class GameScene extends Phaser.Scene {
                                     neighborPos.q,
                                     neighborPos.r,
                                 );
-                                const found = hexNeighbors.some(
+                                return hexNeighbors.some(
                                     (hn) =>
                                         hn.q === currentQ && hn.r === currentR,
                                 );
-                                if (tile.type === "hub") {
-                                    console.log(`[HUB BACKEDGE DEBUG] neighborPos (${neighborPos.q},${neighborPos.r}) hexNeighbors:`, hexNeighbors.map(h => `${h.q},${h.r}`), `found=${found}`);
-                                }
-                                return found;
                             },
                         );
-                        
-                        if (tile.type === "hub") {
-                            console.log(`[HUB BACKEDGE DEBUG] final hasBackEdge=${hasBackEdge}`);
-                        }
                     }
 
                     if (!hasBackEdge) {
@@ -5400,7 +5380,37 @@ class GameScene extends Phaser.Scene {
 
                 highlightCount++;
 
-                const tile = this.tileData.get(key);
+                let tile = this.tileData.get(key);
+                
+                // If not found directly, check for multi-hex tiles (hub, planets) via spriteKeyMap
+                if (!tile) {
+                    const checkKey = key.endsWith(",3") ? key : key.replace(/,\d+$/, ",3");
+                    
+                    // Check hub first
+                    const hubTile = this.tileData.get("0,0,3");
+                    if (hubTile && hubTile.type === "hub" && hubTile.sprite) {
+                        const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
+                        if (hubKeys && hubKeys.has(checkKey)) {
+                            tile = hubTile;
+                        }
+                    }
+                    
+                    // Check other multi-hex tiles via spriteKeyMap
+                    if (!tile) {
+                        for (const [sprite, keys] of this.spriteKeyMap.entries()) {
+                            if (keys.has(checkKey)) {
+                                for (const [tileKey, tileEntry] of this.tileData.entries()) {
+                                    if (tileEntry.sprite === sprite) {
+                                        tile = tileEntry;
+                                        break;
+                                    }
+                                }
+                                if (tile) break;
+                            }
+                        }
+                    }
+                }
+                
                 if (!tile) {
                     continue;
                 }
