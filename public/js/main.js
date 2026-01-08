@@ -5707,10 +5707,6 @@ class GameScene extends Phaser.Scene {
     }
 
     createTeleporterEffect(x, y, scale, isUp) {
-        if (!this.textures.exists("glowParticle")) {
-            this.createGlowParticleTexture();
-        }
-
         const container = this.add.container(x, y);
 
         const side = scale;
@@ -5789,38 +5785,12 @@ class GameScene extends Phaser.Scene {
             loop: true,
         });
 
-        const particles = this.add.particles(0, 0, "glowParticle", {
-            speed: { min: 10, max: 30 },
-            scale: { start: 0.3, end: 0 },
-            alpha: { start: 0.6, end: 0 },
-            lifespan: 1500,
-            frequency: 200,
-            blendMode: "ADD",
-            emitZone: {
-                type: "edge",
-                source: new Phaser.Geom.Triangle(
-                    p1.x,
-                    p1.y,
-                    p2.x,
-                    p2.y,
-                    p3.x,
-                    p3.y,
-                ),
-                quantity: 8,
-            },
-            gravityY: isUp ? 20 : -20,
-        });
-        container.add(particles);
-
         container.setMask(mask);
         container.setDepth(1);
 
         container.teleporterCleanup = () => {
             try {
                 glowTimer.remove();
-                if (particles.stopFollow) particles.stopFollow();
-                if (particles.killAll) particles.killAll();
-                particles.destroy();
                 bgGraphics.destroy();
                 glowGraphics.destroy();
                 maskGraphics.destroy();
