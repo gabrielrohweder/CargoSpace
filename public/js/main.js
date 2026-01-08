@@ -3279,8 +3279,8 @@ class GameScene extends Phaser.Scene {
                     if (!this.teleporterEffects) this.teleporterEffects = [];
                     this.teleporterEffects.push(teleporterEffect);
                     
-                    // Hide the original sprite (effect replaces it visually)
-                    sprite.setAlpha(0);
+                    // Destroy the original sprite (effect replaces it visually)
+                    sprite.destroy();
                 }
             }
         });
@@ -4297,7 +4297,7 @@ class GameScene extends Phaser.Scene {
         
         for (let r = center; r > 0; r--) {
             const alpha = (1 - r / center) * 0.8;
-            graphics.fillStyle(0x00ffff, alpha);
+            graphics.fillStyle(0xff0000, alpha);
             graphics.fillCircle(center, center, r);
         }
         graphics.generateTexture('glowParticle', size, size);
@@ -4333,7 +4333,7 @@ class GameScene extends Phaser.Scene {
         const mask = maskGraphics.createGeometryMask();
         
         const bgGraphics = this.add.graphics();
-        bgGraphics.fillStyle(0x001a1a, 0.8);
+        bgGraphics.fillStyle(0x000000, 1.0);
         bgGraphics.beginPath();
         bgGraphics.moveTo(p1.x, p1.y);
         bgGraphics.lineTo(p2.x, p2.y);
@@ -4347,15 +4347,15 @@ class GameScene extends Phaser.Scene {
         
         const drawGlow = (phase) => {
             glowGraphics.clear();
-            const pulseAlpha = 0.3 + 0.3 * Math.sin(phase);
+            const pulseAlpha = 0.3 + 0.4 * Math.sin(phase);
             
-            for (let i = 3; i >= 0; i--) {
-                const shrink = i * 8;
-                const alpha = pulseAlpha * (1 - i * 0.2);
-                glowGraphics.lineStyle(2, 0x00ffff, alpha);
+            for (let i = 7; i >= 0; i--) {
+                const shrink = i * 5;
+                const alpha = pulseAlpha * (1 - i * 0.1);
+                glowGraphics.lineStyle(2, 0xff0000, alpha);
                 glowGraphics.beginPath();
                 
-                const factor = 1 - shrink / (H * 2);
+                const factor = 1 - shrink / (H * 3);
                 glowGraphics.moveTo(p1.x * factor, p1.y * factor);
                 glowGraphics.lineTo(p2.x * factor, p2.y * factor);
                 glowGraphics.lineTo(p3.x * factor, p3.y * factor);
@@ -4363,9 +4363,9 @@ class GameScene extends Phaser.Scene {
                 glowGraphics.strokePath();
             }
             
-            const centerPulse = 0.2 + 0.15 * Math.sin(phase * 2);
-            glowGraphics.fillStyle(0x00ffff, centerPulse);
-            glowGraphics.fillCircle(0, 0, 5 + 3 * Math.sin(phase));
+            const centerPulse = 0.3 + 0.2 * Math.sin(phase * 2);
+            glowGraphics.fillStyle(0xff0000, centerPulse);
+            glowGraphics.fillCircle(0, 0, 6 + 4 * Math.sin(phase));
         };
         
         let phase = Math.random() * Math.PI * 2;
