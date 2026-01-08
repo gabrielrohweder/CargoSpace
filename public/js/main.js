@@ -16,10 +16,17 @@ class LobbyScene extends Phaser.Scene {
             // Title
             const width = this.cameras.main.width;
             const height = this.cameras.main.height;
+            
+            // Responsive sizing
+            this.isMobile = width < 768;
+            const titleFontSize = this.isMobile ? 28 : 48;
+            const buttonFontSize = this.isMobile ? 18 : 24;
+            const buttonWidth = this.isMobile ? 160 : 200;
+            const buttonHeight = this.isMobile ? 50 : 60;
 
             const titleText = this.add
-                .text(width / 2, 40, "CargoSpace - Game Lobby", {
-                    font: "bold 48px Arial",
+                .text(width / 2, this.isMobile ? 30 : 40, "CargoSpace - Game Lobby", {
+                    font: `bold ${titleFontSize}px Arial`,
                     fill: "#ffffff",
                 })
                 .setOrigin(0.5);
@@ -37,7 +44,7 @@ class LobbyScene extends Phaser.Scene {
 
             // Create Game button
             const createBtn = this.add
-                .rectangle(width / 2, height - 40, 200, 60, 0x2a9d8f)
+                .rectangle(width / 2, height - 40, buttonWidth, buttonHeight, 0x2a9d8f)
                 .setInteractive();
             createBtn.on("pointerdown", () => this.showCreateGamePopup());
             createBtn.on("pointerover", () => (createBtn.fillColor = 0x3bb5a3));
@@ -45,13 +52,13 @@ class LobbyScene extends Phaser.Scene {
 
             const btnText = this.add
                 .text(width / 2, height - 40, "Create Game", {
-                    font: "bold 24px Arial",
+                    font: `bold ${buttonFontSize}px Arial`,
                     fill: "#ffffff",
                 })
                 .setOrigin(0.5);
 
             // Container for game list
-            this.gameListContainer = this.add.container(0, 120);
+            this.gameListContainer = this.add.container(0, this.isMobile ? 80 : 120);
 
             // Request initial lobby data
             if (this.socket) {
@@ -61,7 +68,7 @@ class LobbyScene extends Phaser.Scene {
             // Show initial message
             const statusText = this.add
                 .text(width / 2, height / 2, "Loading games...", {
-                    font: "bold 24px Arial",
+                    font: `bold ${buttonFontSize}px Arial`,
                     fill: "#ffffff",
                 })
                 .setOrigin(0.5);
@@ -74,14 +81,21 @@ class LobbyScene extends Phaser.Scene {
         // Clear existing games
         this.gameListContainer.removeAll(true);
 
+        const width = this.cameras.main.width;
+        const fontSize = this.isMobile ? 16 : 20;
+        const detailFontSize = this.isMobile ? 12 : 16;
+        const rowHeight = this.isMobile ? 50 : 70;
+        const btnWidth = this.isMobile ? 80 : 150;
+        const btnHeight = this.isMobile ? 36 : 50;
+
         if (games.length === 0) {
             const noGamesText = this.add
                 .text(
-                    this.cameras.main.width / 2,
-                    200,
+                    width / 2,
+                    this.isMobile ? 100 : 200,
                     "No games available. Create one!",
                     {
-                        font: "24px Arial",
+                        font: `${fontSize}px Arial`,
                         fill: "#888888",
                     },
                 )
@@ -93,31 +107,31 @@ class LobbyScene extends Phaser.Scene {
         let yPos = 0;
         games.forEach((game, index) => {
             const gameLabel = this.add.text(
-                40,
+                20,
                 yPos,
                 `${game.name} (${game.playerCount}/${game.maxPlayers})`,
                 {
-                    font: "bold 20px Arial",
+                    font: `bold ${fontSize}px Arial`,
                     fill: "#ffffff",
                 },
             );
 
             const gameDetails = this.add.text(
-                40,
-                yPos + 30,
+                20,
+                yPos + (this.isMobile ? 20 : 30),
                 `Tiles: ${game.movementTiles} | Asteroids: ${game.asteroidBelts ? "Yes" : "No"}`,
                 {
-                    font: "16px Arial",
+                    font: `${detailFontSize}px Arial`,
                     fill: "#aaaaaa",
                 },
             );
 
             const joinBtn = this.add
                 .rectangle(
-                    this.cameras.main.width - 100,
+                    width - (this.isMobile ? 60 : 100),
                     yPos + 20,
-                    150,
-                    50,
+                    btnWidth,
+                    btnHeight,
                     0x264653,
                 )
                 .setInteractive();
@@ -129,8 +143,8 @@ class LobbyScene extends Phaser.Scene {
             joinBtn.on("pointerout", () => (joinBtn.fillColor = 0x264653));
 
             const joinBtnText = this.add
-                .text(this.cameras.main.width - 100, yPos + 20, "Join", {
-                    font: "bold 16px Arial",
+                .text(width - (this.isMobile ? 60 : 100), yPos + 20, "Join", {
+                    font: `bold ${this.isMobile ? 14 : 16}px Arial`,
                     fill: "#ffffff",
                 })
                 .setOrigin(0.5);
@@ -141,17 +155,24 @@ class LobbyScene extends Phaser.Scene {
                 joinBtn,
                 joinBtnText,
             ]);
-            yPos += 100;
+            yPos += rowHeight;
         });
     }
 
     showCreateGamePopup() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
+        
+        // Responsive popup sizing
+        const popupWidth = this.isMobile ? Math.min(width - 40, 350) : 600;
+        const popupHeight = this.isMobile ? Math.min(height - 80, 450) : 550;
+        const titleFontSize = this.isMobile ? 24 : 32;
+        const labelFontSize = this.isMobile ? 14 : 16;
+        const inputWidth = this.isMobile ? "150px" : "200px";
 
         // Create popup background
         const popupBg = this.add
-            .rectangle(width / 2, height / 2, 600, 550, 0x000000, 0.9)
+            .rectangle(width / 2, height / 2, popupWidth, popupHeight, 0x000000, 0.9)
             .setInteractive();
         popupBg.setStrokeStyle(4, 0xffffff);
         popupBg.setScrollFactor(0).setDepth(3000);
@@ -163,17 +184,19 @@ class LobbyScene extends Phaser.Scene {
 
         // Title
         const popupTitle = this.add
-            .text(0, -240, "Create Game", {
-                font: "bold 32px Arial",
+            .text(0, -popupHeight / 2 + 30, "Create Game", {
+                font: `bold ${titleFontSize}px Arial`,
                 fill: "#ffffff",
             })
             .setOrigin(0.5);
 
-        let yOffset = -200;
+        let yOffset = -popupHeight / 2 + 70;
+        const rowSpacing = this.isMobile ? 40 : 50;
+        const labelX = -popupWidth / 2 + 20;
 
         // Player Name input
-        const playerNameLabel = this.add.text(-250, yOffset, "Your Name:", {
-            font: "bold 16px Arial",
+        const playerNameLabel = this.add.text(labelX, yOffset, "Your Name:", {
+            font: `bold ${labelFontSize}px Arial`,
             fill: "#ffffff",
         });
 
@@ -183,9 +206,9 @@ class LobbyScene extends Phaser.Scene {
         playerNameInput.style.position = "fixed";
         playerNameInput.style.left = width / 2 + "px";
         playerNameInput.style.top = height / 2 + yOffset - 15 + "px";
-        playerNameInput.style.width = "200px";
+        playerNameInput.style.width = inputWidth;
         playerNameInput.style.height = "30px";
-        playerNameInput.style.fontSize = "16px";
+        playerNameInput.style.fontSize = `${labelFontSize}px`;
         document.body.appendChild(playerNameInput);
 
         yOffset += 60;
@@ -501,28 +524,34 @@ class UIScene extends Phaser.Scene {
         this.turnIndicatorText = null;
         this.turnPhase = "roll"; // Track current phase
 
-        // Left Panel Background
-        const leftPanelWidth = 250;
-        const leftPanelHeight = this.cameras.main.height;
-        this.leftPanelGraphics = this.add.graphics();
-        this.leftPanelGraphics.fillStyle(0x000000, 0.5);
-        this.leftPanelGraphics.fillRect(0, 0, leftPanelWidth, leftPanelHeight);
+        // Calculate responsive panel sizes
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        this.isMobile = width < 768;
+        this.leftPanelWidth = this.isMobile ? 0 : Math.min(250, width * 0.2);
+        this.bottomPanelHeight = this.isMobile ? Math.min(200, height * 0.35) : Math.min(300, height * 0.4);
 
-        this.add.text(10, 10, "Other Players", {
-            font: "20px Arial",
-            fill: "#ffffff",
-        });
+        // Left Panel Background (hidden on mobile)
+        this.leftPanelGraphics = this.add.graphics();
+        if (this.leftPanelWidth > 0) {
+            this.leftPanelGraphics.fillStyle(0x000000, 0.5);
+            this.leftPanelGraphics.fillRect(0, 0, this.leftPanelWidth, height - this.bottomPanelHeight);
+            
+            this.otherPlayersLabel = this.add.text(10, 10, "Other Players", {
+                font: "20px Arial",
+                fill: "#ffffff",
+            });
+        }
 
         // Bottom Panel Background
-        const bottomPanelHeight = 300;
-        const bottomPanelY = this.cameras.main.height - bottomPanelHeight;
+        const bottomPanelY = height - this.bottomPanelHeight;
         this.bottomPanelGraphics = this.add.graphics();
         this.bottomPanelGraphics.fillStyle(0x222222, 0.9);
         this.bottomPanelGraphics.fillRect(
             0,
             bottomPanelY,
-            this.cameras.main.width,
-            bottomPanelHeight,
+            width,
+            this.bottomPanelHeight,
         );
 
         this.createDiceDisplay();
@@ -1134,13 +1163,22 @@ class UIScene extends Phaser.Scene {
     resize(gameSize) {
         const width = gameSize.width;
         const height = gameSize.height;
-        const bottomPanelHeight = 300;
+
+        const isMobile = width < 768;
+        const leftPanelWidth = isMobile ? 0 : Math.min(250, width * 0.2);
+        const bottomPanelHeight = isMobile ? Math.min(200, height * 0.35) : Math.min(300, height * 0.4);
+
+        this.isMobile = isMobile;
+        this.leftPanelWidth = leftPanelWidth;
+        this.bottomPanelHeight = bottomPanelHeight;
 
         this.cameras.main.setSize(width, height);
 
         this.leftPanelGraphics.clear();
-        this.leftPanelGraphics.fillStyle(0x000000, 0.5);
-        this.leftPanelGraphics.fillRect(0, 0, 250, height - bottomPanelHeight);
+        if (leftPanelWidth > 0) {
+            this.leftPanelGraphics.fillStyle(0x000000, 0.5);
+            this.leftPanelGraphics.fillRect(0, 0, leftPanelWidth, height - bottomPanelHeight);
+        }
 
         this.bottomPanelGraphics.clear();
         this.bottomPanelGraphics.fillStyle(0x222222, 0.9);
@@ -1270,17 +1308,17 @@ class UIScene extends Phaser.Scene {
     }
 
     renderCurrentPlayer(player) {
-        const bottomPanelHeight = 300;
+        const bottomPanelHeight = this.bottomPanelHeight || 300;
         const panelY = this.cameras.main.height - bottomPanelHeight;
         const centerY = panelY + bottomPanelHeight / 2;
         const screenWidth = this.cameras.main.width;
 
-        // Calculate total width to center content
-        // Cargo (3 cards) + Spacing + Depot (1 card) + Spacing + Function Cards (N cards)
-        const cardWidth = 100;
-        const cardHeight = 150;
-        const spacing = 20;
-        const sectionSpacing = 60;
+        // Responsive card sizing
+        const scaleFactor = this.isMobile ? 0.6 : 1;
+        const cardWidth = 100 * scaleFactor;
+        const cardHeight = 150 * scaleFactor;
+        const spacing = 15 * scaleFactor;
+        const sectionSpacing = 40 * scaleFactor;
 
         const cargoSectionWidth = 3 * cardWidth + 2 * spacing;
         const depotSectionWidth = cardWidth;
@@ -3731,8 +3769,27 @@ class GameScene extends Phaser.Scene {
         this.scene.launch("UIScene", { socket: this.socket });
 
         // Add camera controls
+        this.lastPinchDistance = 0;
+        this.isPinching = false;
+
         this.input.on("pointermove", (pointer) => {
-            if (pointer.isDown) {
+            const pointer1 = this.input.pointer1;
+            const pointer2 = this.input.pointer2;
+
+            if (pointer1.isDown && pointer2.isDown) {
+                const dist = Phaser.Math.Distance.Between(
+                    pointer1.x, pointer1.y,
+                    pointer2.x, pointer2.y
+                );
+
+                if (this.lastPinchDistance > 0) {
+                    const zoomDelta = (dist - this.lastPinchDistance) * 0.005;
+                    const newZoom = this.cameras.main.zoom + zoomDelta;
+                    this.cameras.main.zoom = Phaser.Math.Clamp(newZoom, 0.3, 2);
+                }
+                this.lastPinchDistance = dist;
+                this.isPinching = true;
+            } else if (pointer.isDown && !this.isPinching) {
                 this.cameras.main.scrollX -=
                     (pointer.x - pointer.prevPosition.x) /
                     this.cameras.main.zoom;
@@ -3742,11 +3799,16 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        this.input.on("pointerup", () => {
+            this.lastPinchDistance = 0;
+            this.isPinching = false;
+        });
+
         this.input.on(
             "wheel",
             (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
                 const newZoom = this.cameras.main.zoom - deltaY * 0.001;
-                this.cameras.main.zoom = Phaser.Math.Clamp(newZoom, 0.1, 2);
+                this.cameras.main.zoom = Phaser.Math.Clamp(newZoom, 0.3, 2);
             },
         );
 
@@ -5764,11 +5826,6 @@ class GameScene extends Phaser.Scene {
                 glowGraphics.closePath();
                 glowGraphics.strokePath();
             }
-
-            // Pulsing center dot
-            const centerPulse = 0.6 + 0.3 * Math.sin(phase * 2);
-            glowGraphics.fillStyle(0xff0000, centerPulse);
-            glowGraphics.fillCircle(0, 0, 10 + 6 * Math.sin(phase));
         };
 
         let phase = Math.random() * Math.PI * 2;
