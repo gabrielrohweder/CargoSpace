@@ -3268,14 +3268,16 @@ class GameScene extends Phaser.Scene {
                     const canonical = `${pq},${pr},3`;
                     if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
                     
-                    // Save sprite position before destroying
+                    // Save sprite position
                     const spriteX = sprite.x;
                     const spriteY = sprite.y;
                     
-                    console.log(`[TELEPORTER] Processing teleporter at ${pq},${pr} - destroying sprite at (${spriteX},${spriteY})`);
+                    console.log(`[TELEPORTER] Processing teleporter at ${pq},${pr} - hiding sprite at (${spriteX},${spriteY})`);
                     
-                    // Completely destroy the original sprite to prevent green box
-                    sprite.destroy();
+                    // Hide the original sprite but DON'T destroy it (tileData needs the reference)
+                    sprite.setVisible(false);
+                    sprite.setAlpha(0);
+                    sprite.setDepth(-1000);
                     
                     // Add animated teleporter effect to dedicated layer (NOT boardGroup)
                     const isUp = (Math.abs(pq + pr)) % 2 === 0;
