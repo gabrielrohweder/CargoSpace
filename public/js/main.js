@@ -3185,6 +3185,7 @@ class GameScene extends Phaser.Scene {
                 const firstPos = positions[0];
                 const pq = parseInt(firstPos.q);
                 const pr = parseInt(firstPos.r);
+                console.log(`[NON-MOVEMENT TILE] type=${tile.type} at ${pq},${pr}`);
                 
                 // For hub: only register ONE canonical center position (0,0) for movement destination
                 // For planets and other tiles: register all positions
@@ -3265,15 +3266,22 @@ class GameScene extends Phaser.Scene {
                     const canonical = `${pq},${pr},3`;
                     if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
                     
-                    // Save sprite position before destroying
+                    // Save sprite position before hiding
                     const spriteX = sprite.x;
                     const spriteY = sprite.y;
                     
-                    // Completely destroy the original sprite
-                    sprite.setVisible(false);
-                    sprite.destroy();
+                    console.log(`[TELEPORTER] Processing teleporter at ${pq},${pr} - hiding sprite at (${spriteX},${spriteY})`);
                     
-                    // Add animated teleporter effect
+                    // Completely remove original sprite from display
+                    // Set to minimum depth and fully transparent
+                    sprite.setVisible(false);
+                    sprite.setAlpha(0);
+                    sprite.setActive(false);
+                    sprite.setDepth(-1000);
+                    // Also clear the texture to prevent any rendering
+                    sprite.setTexture('__DEFAULT');
+                    
+                    // Add animated teleporter effect with high depth
                     const isUp = (Math.abs(pq + pr)) % 2 === 0;
                     const teleporterEffect = this.createTeleporterEffect(
                         spriteX,
@@ -3281,11 +3289,13 @@ class GameScene extends Phaser.Scene {
                         scale,
                         isUp
                     );
+                    teleporterEffect.setDepth(5); // Above other tiles
                     this.boardGroup.add(teleporterEffect);
                     
                     // Store reference for cleanup
                     if (!this.teleporterEffects) this.teleporterEffects = [];
                     this.teleporterEffects.push(teleporterEffect);
+                    console.log(`[TELEPORTER] Effect created for teleporter at ${pq},${pr}`);
                 }
             }
         });
