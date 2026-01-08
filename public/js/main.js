@@ -5707,6 +5707,10 @@ class GameScene extends Phaser.Scene {
     }
 
     createTeleporterEffect(x, y, scale, isUp) {
+        if (!this.textures.exists("glowParticle")) {
+            this.createGlowParticleTexture();
+        }
+
         const container = this.add.container(x, y);
 
         const side = scale;
