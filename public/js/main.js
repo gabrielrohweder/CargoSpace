@@ -3269,8 +3269,9 @@ class GameScene extends Phaser.Scene {
                     const spriteX = sprite.x;
                     const spriteY = sprite.y;
                     
-                    // Remove sprite from boardGroup and destroy it completely
-                    this.boardGroup.remove(sprite, true, true);
+                    // Completely destroy the original sprite
+                    sprite.setVisible(false);
+                    sprite.destroy();
                     
                     // Add animated teleporter effect
                     const isUp = (Math.abs(pq + pr)) % 2 === 0;
