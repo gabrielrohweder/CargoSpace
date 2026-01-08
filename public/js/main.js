@@ -3415,7 +3415,20 @@ class GameScene extends Phaser.Scene {
 
     getNeighbors(q, r, s) {
         const currentKey = `${q},${r},${s}`;
-        const currentTile = this.tileData.get(currentKey);
+        let currentTile = this.tileData.get(currentKey);
+        
+        // If not found directly, check if this position is part of a multi-hex tile (hub/planet)
+        if (!currentTile) {
+            // Check if this is part of the hub
+            const hubTile = this.tileData.get('0,0,3');
+            if (hubTile && hubTile.type === 'hub' && hubTile.sprite) {
+                const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
+                if (hubKeys && hubKeys.has(currentKey)) {
+                    currentTile = hubTile;
+                }
+            }
+        }
+        
         if (!currentTile) {
             return [];
         }
