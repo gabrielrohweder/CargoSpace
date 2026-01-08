@@ -5250,6 +5250,13 @@ class GameScene extends Phaser.Scene {
                                 { q: neighbor.q, r: neighbor.r },
                             ];
 
+                        // Debug: log hub back-edge validation
+                        if (tile.type === "hub") {
+                            console.log(`[HUB BACKEDGE DEBUG] tile.occupiedPositions:`, tile.occupiedPositions);
+                            console.log(`[HUB BACKEDGE DEBUG] neighborOccupiedPositions:`, neighborOccupiedPositions);
+                            console.log(`[HUB BACKEDGE DEBUG] currentQ=${currentQ}, currentR=${currentR}`);
+                        }
+
                         // For non-movement tiles, check hex adjacency
                         hasBackEdge = neighborOccupiedPositions.some(
                             (neighborPos) => {
@@ -5257,12 +5264,20 @@ class GameScene extends Phaser.Scene {
                                     neighborPos.q,
                                     neighborPos.r,
                                 );
-                                return hexNeighbors.some(
+                                const found = hexNeighbors.some(
                                     (hn) =>
                                         hn.q === currentQ && hn.r === currentR,
                                 );
+                                if (tile.type === "hub") {
+                                    console.log(`[HUB BACKEDGE DEBUG] neighborPos (${neighborPos.q},${neighborPos.r}) hexNeighbors:`, hexNeighbors.map(h => `${h.q},${h.r}`), `found=${found}`);
+                                }
+                                return found;
                             },
                         );
+                        
+                        if (tile.type === "hub") {
+                            console.log(`[HUB BACKEDGE DEBUG] final hasBackEdge=${hasBackEdge}`);
+                        }
                     }
 
                     if (!hasBackEdge) {
