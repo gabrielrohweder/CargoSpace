@@ -3265,11 +3265,18 @@ class GameScene extends Phaser.Scene {
                     const canonical = `${pq},${pr},3`;
                     if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
                     
+                    // Save sprite position before destroying
+                    const spriteX = sprite.x;
+                    const spriteY = sprite.y;
+                    
+                    // Remove sprite from boardGroup and destroy it completely
+                    this.boardGroup.remove(sprite, true, true);
+                    
                     // Add animated teleporter effect
                     const isUp = (Math.abs(pq + pr)) % 2 === 0;
                     const teleporterEffect = this.createTeleporterEffect(
-                        sprite.x,
-                        sprite.y,
+                        spriteX,
+                        spriteY,
                         scale,
                         isUp
                     );
@@ -3278,9 +3285,6 @@ class GameScene extends Phaser.Scene {
                     // Store reference for cleanup
                     if (!this.teleporterEffects) this.teleporterEffects = [];
                     this.teleporterEffects.push(teleporterEffect);
-                    
-                    // Destroy the original sprite (effect replaces it visually)
-                    sprite.destroy();
                 }
             }
         });
@@ -4347,15 +4351,15 @@ class GameScene extends Phaser.Scene {
         
         const drawGlow = (phase) => {
             glowGraphics.clear();
-            const pulseAlpha = 0.3 + 0.4 * Math.sin(phase);
+            const pulseAlpha = 0.4 + 0.4 * Math.sin(phase);
             
-            for (let i = 7; i >= 0; i--) {
-                const shrink = i * 5;
-                const alpha = pulseAlpha * (1 - i * 0.1);
+            // Draw 11 triangular rings from outer edge (1.0) to center (0.0)
+            for (let i = 0; i <= 10; i++) {
+                // Factor goes from 1.0 (outer edge) to 0.0 (center)
+                const factor = 1.0 - (i / 10);
+                const alpha = pulseAlpha * (0.2 + 0.8 * factor);
                 glowGraphics.lineStyle(2, 0xff0000, alpha);
                 glowGraphics.beginPath();
-                
-                const factor = 1 - shrink / (H * 3);
                 glowGraphics.moveTo(p1.x * factor, p1.y * factor);
                 glowGraphics.lineTo(p2.x * factor, p2.y * factor);
                 glowGraphics.lineTo(p3.x * factor, p3.y * factor);
@@ -4363,9 +4367,10 @@ class GameScene extends Phaser.Scene {
                 glowGraphics.strokePath();
             }
             
-            const centerPulse = 0.3 + 0.2 * Math.sin(phase * 2);
+            // Pulsing center dot
+            const centerPulse = 0.6 + 0.3 * Math.sin(phase * 2);
             glowGraphics.fillStyle(0xff0000, centerPulse);
-            glowGraphics.fillCircle(0, 0, 6 + 4 * Math.sin(phase));
+            glowGraphics.fillCircle(0, 0, 10 + 6 * Math.sin(phase));
         };
         
         let phase = Math.random() * Math.PI * 2;
@@ -4402,13 +4407,18 @@ class GameScene extends Phaser.Scene {
         container.setDepth(1);
         
         container.teleporterCleanup = () => {
-            glowTimer.remove();
-            particles.stop();
-            particles.destroy();
-            bgGraphics.destroy();
-            glowGraphics.destroy();
-            maskGraphics.destroy();
-            if (mask && mask.destroy) mask.destroy();
+            try {
+                glowTimer.remove();
+                if (particles.stopFollow) particles.stopFollow();
+                if (particles.killAll) particles.killAll();
+                particles.destroy();
+                bgGraphics.destroy();
+                glowGraphics.destroy();
+                maskGraphics.destroy();
+                if (mask && mask.destroy) mask.destroy();
+            } catch (e) {
+                console.warn('Teleporter cleanup error:', e);
+            }
         };
         
         return container;
@@ -4417,8 +4427,15 @@ class GameScene extends Phaser.Scene {
     cleanupTeleporterEffects() {
         if (this.teleporterEffects) {
             this.teleporterEffects.forEach(effect => {
-                if (effect.teleporterCleanup) {
-                    effect.teleporterCleanup();
+                try {
+                    if (effect.teleporterCleanup) {
+                        effect.teleporterCleanup();
+                    }
+                    if (effect.destroy) {
+                        effect.destroy();
+                    }
+                } catch (e) {
+                    console.warn('Teleporter effect cleanup error:', e);
                 }
             });
             this.teleporterEffects = [];
