@@ -89,3 +89,11 @@ npm start
 - Neighbor discovery now only uses edge hexes at indices 1, 3, 5 of occupiedPositions
 - Fixed getNeighbors to find hub tiles via spriteKeyMap when called from non-center positions
 - Teleportation is free (1 move to enter teleporter, then appear at destination)
+
+### Animated Teleporter Effects (January 2026)
+- Teleporter tiles now display animated effects instead of static images
+- createGlowParticleTexture() generates procedural cyan glow particles
+- createTeleporterEffect() creates: dark triangular background, pulsing cyan border triangles, floating particles with geometry mask
+- Effects use Phaser time events for smooth animation with random phase offsets per teleporter
+- Proper resource cleanup via cleanupTeleporterEffects() on board rebuild and scene shutdown/destroy
+- Memory leak prevention: timers, particles, graphics, and masks are all properly disposed

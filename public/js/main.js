@@ -2551,6 +2551,9 @@ class GameScene extends Phaser.Scene {
         this.createStarTexture('stars1', 400, 1, 0.3);
         this.createStarTexture('stars2', 200, 2, 0.6);
         this.createStarTexture('stars3', 100, 3, 1.0);
+        
+        // Create glow particle texture for teleporter effects
+        this.createGlowParticleTexture();
 
         const width = this.scale.width;
         const height = this.scale.height;
@@ -2576,6 +2579,11 @@ class GameScene extends Phaser.Scene {
         this.highlightedTiles = [];
         this.highlightMarkers = [];
         this.waitingForMovementMarkers = false; // Flag for auto-showing movement markers
+        this.teleporterEffects = []; // Track teleporter effects for cleanup
+        
+        // Register cleanup handlers for scene shutdown/destroy
+        this.events.on('shutdown', this.cleanupTeleporterEffects, this);
+        this.events.on('destroy', this.cleanupTeleporterEffects, this);
         
         // Create splash screen overlay (bottom right quadrant)
         const splashWidth = width / 2;
@@ -2876,6 +2884,9 @@ class GameScene extends Phaser.Scene {
         console.log(`[DEBUG] renderBoard called with ${data.tiles.length} tiles.`);
         // Store board data for re-rendering on resize
         this.lastBoardData = data;
+        // Clean up teleporter effects before clearing
+        this.cleanupTeleporterEffects();
+        
         this.boardGroup.clear(true, true);
         this.tileData.clear();
         this.teleportTiles = [];
@@ -3253,6 +3264,23 @@ class GameScene extends Phaser.Scene {
                 if (tile.type === 'teleportation') {
                     const canonical = `${pq},${pr},3`;
                     if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
+                    
+                    // Add animated teleporter effect
+                    const isUp = (Math.abs(pq + pr)) % 2 === 0;
+                    const teleporterEffect = this.createTeleporterEffect(
+                        sprite.x,
+                        sprite.y,
+                        scale,
+                        isUp
+                    );
+                    this.boardGroup.add(teleporterEffect);
+                    
+                    // Store reference for cleanup
+                    if (!this.teleporterEffects) this.teleporterEffects = [];
+                    this.teleporterEffects.push(teleporterEffect);
+                    
+                    // Hide the original sprite (effect replaces it visually)
+                    sprite.setAlpha(0);
                 }
             }
         });
@@ -4260,6 +4288,141 @@ class GameScene extends Phaser.Scene {
             graphics.fillCircle(x, y, s);
         }
         graphics.generateTexture(key, 2048, 2048);
+    }
+    
+    createGlowParticleTexture() {
+        const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+        const size = 32;
+        const center = size / 2;
+        
+        for (let r = center; r > 0; r--) {
+            const alpha = (1 - r / center) * 0.8;
+            graphics.fillStyle(0x00ffff, alpha);
+            graphics.fillCircle(center, center, r);
+        }
+        graphics.generateTexture('glowParticle', size, size);
+        graphics.destroy();
+    }
+    
+    createTeleporterEffect(x, y, scale, isUp) {
+        const container = this.add.container(x, y);
+        
+        const side = scale;
+        const H = side * Math.sqrt(3) / 2;
+        
+        let p1, p2, p3;
+        if (isUp) {
+            p1 = { x: 0, y: -H * 2/3 };
+            p2 = { x: -side/2, y: H/3 };
+            p3 = { x: side/2, y: H/3 };
+        } else {
+            p1 = { x: 0, y: H * 2/3 };
+            p2 = { x: -side/2, y: -H/3 };
+            p3 = { x: side/2, y: -H/3 };
+        }
+        
+        const maskGraphics = this.make.graphics({ x: x, y: y, add: false });
+        maskGraphics.fillStyle(0xffffff);
+        maskGraphics.beginPath();
+        maskGraphics.moveTo(p1.x, p1.y);
+        maskGraphics.lineTo(p2.x, p2.y);
+        maskGraphics.lineTo(p3.x, p3.y);
+        maskGraphics.closePath();
+        maskGraphics.fillPath();
+        
+        const mask = maskGraphics.createGeometryMask();
+        
+        const bgGraphics = this.add.graphics();
+        bgGraphics.fillStyle(0x001a1a, 0.8);
+        bgGraphics.beginPath();
+        bgGraphics.moveTo(p1.x, p1.y);
+        bgGraphics.lineTo(p2.x, p2.y);
+        bgGraphics.lineTo(p3.x, p3.y);
+        bgGraphics.closePath();
+        bgGraphics.fillPath();
+        container.add(bgGraphics);
+        
+        const glowGraphics = this.add.graphics();
+        container.add(glowGraphics);
+        
+        const drawGlow = (phase) => {
+            glowGraphics.clear();
+            const pulseAlpha = 0.3 + 0.3 * Math.sin(phase);
+            
+            for (let i = 3; i >= 0; i--) {
+                const shrink = i * 8;
+                const alpha = pulseAlpha * (1 - i * 0.2);
+                glowGraphics.lineStyle(2, 0x00ffff, alpha);
+                glowGraphics.beginPath();
+                
+                const factor = 1 - shrink / (H * 2);
+                glowGraphics.moveTo(p1.x * factor, p1.y * factor);
+                glowGraphics.lineTo(p2.x * factor, p2.y * factor);
+                glowGraphics.lineTo(p3.x * factor, p3.y * factor);
+                glowGraphics.closePath();
+                glowGraphics.strokePath();
+            }
+            
+            const centerPulse = 0.2 + 0.15 * Math.sin(phase * 2);
+            glowGraphics.fillStyle(0x00ffff, centerPulse);
+            glowGraphics.fillCircle(0, 0, 5 + 3 * Math.sin(phase));
+        };
+        
+        let phase = Math.random() * Math.PI * 2;
+        const updateGlow = () => {
+            phase += 0.05;
+            drawGlow(phase);
+        };
+        
+        drawGlow(phase);
+        
+        const glowTimer = this.time.addEvent({
+            delay: 50,
+            callback: updateGlow,
+            loop: true
+        });
+        
+        const particles = this.add.particles(0, 0, 'glowParticle', {
+            speed: { min: 10, max: 30 },
+            scale: { start: 0.3, end: 0 },
+            alpha: { start: 0.6, end: 0 },
+            lifespan: 1500,
+            frequency: 200,
+            blendMode: 'ADD',
+            emitZone: {
+                type: 'edge',
+                source: new Phaser.Geom.Triangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y),
+                quantity: 8
+            },
+            gravityY: isUp ? 20 : -20
+        });
+        container.add(particles);
+        
+        container.setMask(mask);
+        container.setDepth(1);
+        
+        container.teleporterCleanup = () => {
+            glowTimer.remove();
+            particles.stop();
+            particles.destroy();
+            bgGraphics.destroy();
+            glowGraphics.destroy();
+            maskGraphics.destroy();
+            if (mask && mask.destroy) mask.destroy();
+        };
+        
+        return container;
+    }
+    
+    cleanupTeleporterEffects() {
+        if (this.teleporterEffects) {
+            this.teleporterEffects.forEach(effect => {
+                if (effect.teleporterCleanup) {
+                    effect.teleporterCleanup();
+                }
+            });
+            this.teleporterEffects = [];
+        }
     }
 
     resize(gameSize) {
