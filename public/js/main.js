@@ -3464,7 +3464,6 @@ class GameScene extends Phaser.Scene {
                     occupiedPositions[3], // (0, -1) - NORTH edge
                     occupiedPositions[5]  // (-1, 0) - WEST edge
                 ];
-                console.log('[HUB DEBUG] Using edge hexes:', JSON.stringify(edgeHexes));
             } else {
                 // For other non-movement tiles (planets), use all positions
                 edgeHexes = occupiedPositions;
@@ -3476,7 +3475,6 @@ class GameScene extends Phaser.Scene {
                 const hr = parseInt(pos.r);
                 const hexNeighbors = this.getHexNeighbors(hq, hr);
                 
-                let foundFromEdge = [];
                 hexNeighbors.forEach(hexNbr => {
                     const nbrHexKey = `${hexNbr.q},${hexNbr.r}`;
                     if (occupiedHexes.has(nbrHexKey)) {
@@ -3511,13 +3509,9 @@ class GameScene extends Phaser.Scene {
                             // Use canonical s value (3 for non-movement, actual s for movement)
                             const finalS = nbrTile.type === 'movement' ? s : 3;
                             results.push({ q: hexNbr.q, r: hexNbr.r, s: finalS });
-                            foundFromEdge.push(`(${hexNbr.q},${hexNbr.r},${finalS})`);
                         }
                     }
                 });
-                if (currentTile.type === 'hub') {
-                    console.log(`[HUB DEBUG] Edge (${hq},${hr}) found neighbors:`, foundFromEdge.join(', ') || 'NONE');
-                }
             });
             
             const deduped = Array.from(new Map(results.map(r => [`${r.q},${r.r},${r.s}`, r])).values());
@@ -3871,12 +3865,14 @@ class GameScene extends Phaser.Scene {
                 }
 
                 // Teleporters offer optional teleportation but don't block normal movement
+                // Teleportation costs 1 additional move (entering teleporter + teleporting = 2 moves total)
                 if (tile.type === 'teleportation') {
                     const teleporterKey = key;
                     const destinations = this.teleporterMap ? this.teleporterMap.get(teleporterKey) : null;
 
                     if (destinations && destinations.length > 0) {
-                        const distAfterStep = current.dist + stepCost;
+                        const teleportCost = 1; // Additional cost for using teleporter
+                        const distAfterStep = current.dist + stepCost + teleportCost;
                         if (distAfterStep <= range) {
                             destinations.forEach(destKey => {
                                 const destTile = this.tileData.get(destKey);
