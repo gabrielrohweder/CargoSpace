@@ -211,11 +211,11 @@ class LobbyScene extends Phaser.Scene {
         playerNameInput.style.fontSize = `${labelFontSize}px`;
         document.body.appendChild(playerNameInput);
 
-        yOffset += 60;
+        yOffset += rowSpacing;
 
         // Game Name input
-        const nameLabel = this.add.text(-250, yOffset, "Game Name:", {
-            font: "bold 16px Arial",
+        const nameLabel = this.add.text(labelX, yOffset, "Game Name:", {
+            font: `bold ${labelFontSize}px Arial`,
             fill: "#ffffff",
         });
 
@@ -225,16 +225,16 @@ class LobbyScene extends Phaser.Scene {
         nameInput.style.position = "fixed";
         nameInput.style.left = width / 2 + "px";
         nameInput.style.top = height / 2 + yOffset - 15 + "px";
-        nameInput.style.width = "200px";
+        nameInput.style.width = inputWidth;
         nameInput.style.height = "30px";
-        nameInput.style.fontSize = "16px";
+        nameInput.style.fontSize = `${labelFontSize}px`;
         document.body.appendChild(nameInput);
 
-        yOffset += 60;
+        yOffset += rowSpacing;
 
         // Movement Tiles
-        const tilesLabel = this.add.text(-250, yOffset, "Board Size:", {
-            font: "bold 16px Arial",
+        const tilesLabel = this.add.text(labelX, yOffset, "Board Size:", {
+            font: `bold ${labelFontSize}px Arial`,
             fill: "#ffffff",
         });
 
@@ -244,36 +244,36 @@ class LobbyScene extends Phaser.Scene {
         tilesContainer.style.top = height / 2 + yOffset - 15 + "px";
         tilesContainer.style.display = "flex";
         tilesContainer.style.alignItems = "center";
-        tilesContainer.style.gap = "10px";
+        tilesContainer.style.gap = this.isMobile ? "5px" : "10px";
 
         const smallLabel = document.createElement("span");
         smallLabel.textContent = "Small";
         smallLabel.style.color = "#ffffff";
-        smallLabel.style.fontSize = "14px";
+        smallLabel.style.fontSize = `${this.isMobile ? 12 : 14}px`;
 
         const tilesInput = document.createElement("input");
         tilesInput.type = "range";
         tilesInput.value = "50";
         tilesInput.min = "20";
         tilesInput.max = "100";
-        tilesInput.style.width = "150px";
+        tilesInput.style.width = this.isMobile ? "80px" : "150px";
         tilesInput.style.height = "20px";
 
         const largeLabel = document.createElement("span");
         largeLabel.textContent = "Large";
         largeLabel.style.color = "#ffffff";
-        largeLabel.style.fontSize = "14px";
+        largeLabel.style.fontSize = `${this.isMobile ? 12 : 14}px`;
 
         tilesContainer.appendChild(smallLabel);
         tilesContainer.appendChild(tilesInput);
         tilesContainer.appendChild(largeLabel);
         document.body.appendChild(tilesContainer);
 
-        yOffset += 60;
+        yOffset += rowSpacing;
 
         // Asteroid Belts
-        const asteroidsLabel = this.add.text(-250, yOffset, "Asteroid Belts:", {
-            font: "bold 16px Arial",
+        const asteroidsLabel = this.add.text(labelX, yOffset, "Asteroid Belts:", {
+            font: `bold ${labelFontSize}px Arial`,
             fill: "#ffffff",
         });
 
@@ -286,11 +286,11 @@ class LobbyScene extends Phaser.Scene {
         asteroidsCheckbox.style.height = "20px";
         document.body.appendChild(asteroidsCheckbox);
 
-        yOffset += 60;
+        yOffset += rowSpacing;
 
         // Max Players
-        const playersLabel = this.add.text(-250, yOffset, "Max Players:", {
-            font: "bold 16px Arial",
+        const playersLabel = this.add.text(labelX, yOffset, "Max Players:", {
+            font: `bold ${labelFontSize}px Arial`,
             fill: "#ffffff",
         });
 
@@ -302,16 +302,18 @@ class LobbyScene extends Phaser.Scene {
         playersInput.style.position = "fixed";
         playersInput.style.left = width / 2 + "px";
         playersInput.style.top = height / 2 + yOffset - 15 + "px";
-        playersInput.style.width = "200px";
+        playersInput.style.width = inputWidth;
         playersInput.style.height = "30px";
-        playersInput.style.fontSize = "16px";
+        playersInput.style.fontSize = `${labelFontSize}px`;
         document.body.appendChild(playersInput);
 
-        yOffset += 80;
+        yOffset += rowSpacing + 20;
 
         // Create button
+        const btnWidth = this.isMobile ? 120 : 150;
+        const btnHeight = this.isMobile ? 40 : 50;
         const createBtn = this.add
-            .rectangle(0, yOffset, 150, 50, 0x2a9d8f)
+            .rectangle(0, yOffset, btnWidth, btnHeight, 0x2a9d8f)
             .setInteractive();
         createBtn.on("pointerdown", () => {
             const playerName = playerNameInput.value || "Player";

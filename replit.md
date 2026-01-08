@@ -92,9 +92,20 @@ npm start
 
 ### Animated Teleporter Effects (January 2026)
 - Teleporter tiles now display animated effects instead of static images
-- createGlowParticleTexture() generates procedural red glow particles
-- createTeleporterEffect() creates: black triangular background, 11 pulsing red triangular rings extending from outer edge (factor 1.0) to center (factor 0.0), floating red particles with geometry mask
+- createTeleporterEffect() creates: black triangular background, 11 pulsing red triangular rings extending from outer edge to center
 - Effects use Phaser time events for smooth animation with random phase offsets per teleporter
-- Original teleporter sprite removed via boardGroup.remove(sprite, true, true) to prevent green box artifacts
+- Teleporter sprites hidden (not destroyed) to preserve tileData references for movement system
 - Proper resource cleanup via cleanupTeleporterEffects() on board rebuild and scene shutdown/destroy
-- Memory leak prevention: timers, particles, graphics, and masks are all properly disposed with try-catch error handling
+- Memory leak prevention: timers, graphics, and masks are all properly disposed with try-catch error handling
+
+### Mobile Responsiveness (January 2026)
+- Added viewport meta tags for mobile support (user-scalable=no, touch-action: none)
+- Added dynamic viewport height (100dvh) for proper sizing on mobile browsers
+- Camera supports pinch-to-zoom with two-finger gesture detection
+- Camera pan/drag works on touch devices
+- Zoom clamped between 0.3x and 2.0x
+- LobbyScene uses responsive sizing: smaller fonts and buttons on screens < 768px
+- Create Game popup scales to fit narrow screens with adjusted field layouts
+- UIScene adapts panel sizes: left panel hidden on mobile, bottom panel shorter (35% height)
+- Cargo cards scale down to 60% size on mobile devices
+- Touch targets sized appropriately for finger input
