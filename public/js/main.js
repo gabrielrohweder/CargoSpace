@@ -3272,14 +3272,9 @@ class GameScene extends Phaser.Scene {
                     
                     console.log(`[TELEPORTER] Processing teleporter at ${pq},${pr} - hiding sprite at (${spriteX},${spriteY})`);
                     
-                    // Completely remove original sprite from display
-                    // Set to minimum depth and fully transparent
+                    // Hide original sprite and create animated effect
                     sprite.setVisible(false);
                     sprite.setAlpha(0);
-                    sprite.setActive(false);
-                    sprite.setDepth(-1000);
-                    // Also clear the texture to prevent any rendering
-                    sprite.setTexture('__DEFAULT');
                     
                     // Add animated teleporter effect with high depth
                     const isUp = (Math.abs(pq + pr)) % 2 === 0;
