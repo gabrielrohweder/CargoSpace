@@ -2689,6 +2689,17 @@ class GameScene extends Phaser.Scene {
                 this.clearHighlights();
                 this.waitingForMovementMarkers = false;
             }
+            
+            // Show movement markers when phase changes to 'move' and player has moves
+            if (data.phase === 'move' && this.waitingForMovementMarkers && this.players) {
+                const myPlayer = this.players.find(p => p.socketId === this.socket.id);
+                if (myPlayer && myPlayer.movesLeft > 0 && myPlayer.ship && myPlayer.ship.position) {
+                    console.log('[GAMESCENE] Phase changed to move, showing movement markers now');
+                    const { q, r, s } = myPlayer.ship.position;
+                    this.highlightReachableTiles(q, r, s, myPlayer.movesLeft);
+                    this.waitingForMovementMarkers = false;
+                }
+            }
         });
 
         this.socket.on('diceRolled', (data) => {
