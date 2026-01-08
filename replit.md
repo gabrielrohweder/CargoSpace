@@ -109,3 +109,9 @@ npm start
 - UIScene adapts panel sizes: left panel hidden on mobile, bottom panel shorter (35% height)
 - Cargo cards scale down to 60% size on mobile devices
 - Touch targets sized appropriately for finger input
+
+### Movement Pathfinding Fix (January 2026)
+- Fixed BFS not being able to traverse back through hub to connecting branches
+- Issue: Hub hexes (except center 0,0) weren't found in tileData during BFS exploration
+- Fix: Added lookup for hub and multi-hex tiles via spriteKeyMap when currentTileData is undefined
+- Players can now move in any direction including back toward the hub after passing it

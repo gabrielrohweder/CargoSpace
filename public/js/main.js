@@ -4938,7 +4938,36 @@ class GameScene extends Phaser.Scene {
                     continue;
                 }
 
-                const currentTileData = this.tileData.get(currentKey);
+                let currentTileData = this.tileData.get(currentKey);
+                
+                // Check if current position is part of the hub (hub only registered at 0,0,3)
+                if (!currentTileData) {
+                    const hubTile = this.tileData.get("0,0,3");
+                    if (hubTile && hubTile.type === "hub" && hubTile.sprite) {
+                        const hubKeys = this.spriteKeyMap.get(hubTile.sprite);
+                        const checkKey = `${current.q},${current.r},3`;
+                        if (hubKeys && hubKeys.has(checkKey)) {
+                            currentTileData = hubTile;
+                        }
+                    }
+                }
+                
+                // Also check for other multi-hex tiles via spriteKeyMap
+                if (!currentTileData) {
+                    const checkKey = `${current.q},${current.r},3`;
+                    for (const [sprite, keys] of this.spriteKeyMap.entries()) {
+                        if (keys.has(checkKey)) {
+                            for (const [tileKey, tileEntry] of this.tileData.entries()) {
+                                if (tileEntry.sprite === sprite) {
+                                    currentTileData = tileEntry;
+                                    break;
+                                }
+                            }
+                            if (currentTileData) break;
+                        }
+                    }
+                }
+                
                 const currentSpriteKeys = currentTileData
                     ? this.spriteKeyMap.get(currentTileData.sprite)
                     : null;
