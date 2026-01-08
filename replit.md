@@ -112,6 +112,8 @@ npm start
 
 ### Movement Pathfinding Fix (January 2026)
 - Fixed BFS not being able to traverse back through hub to connecting branches
-- Issue: Hub hexes (except center 0,0) weren't found in tileData during BFS exploration
-- Fix: Added lookup for hub and multi-hex tiles via spriteKeyMap when currentTileData is undefined
+- Issue 1: Hub hexes (except center 0,0) weren't found in tileData during BFS exploration
+- Fix 1: Added lookup for hub and multi-hex tiles via spriteKeyMap when currentTileData is undefined
+- Issue 2: Back-edge validation used triangle-level checks for hub/planet tiles, which always failed
+- Fix 2: Hub, planet, and landing tiles now use hex-level adjacency for back-edge validation
 - Players can now move in any direction including back toward the hub after passing it

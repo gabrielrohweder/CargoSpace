@@ -4792,9 +4792,6 @@ class GameScene extends Phaser.Scene {
                             };
                             neighborKey = checkKey;
                             neighborS = 3;
-                            console.log(`[NEIGHBOR DEBUG] Found hub at ${checkKey} from ${keyStr}`);
-                        } else {
-                            console.log(`[NEIGHBOR DEBUG] Hub spriteKeyMap check failed for ${checkKey} from ${keyStr}, hubKeys exists: ${!!hubKeys}`);
                         }
                     }
                 }
@@ -4809,7 +4806,6 @@ class GameScene extends Phaser.Scene {
                                     neighborTile = tileEntry;
                                     neighborKey = checkKey;
                                     neighborS = 3;
-                                    console.log(`[NEIGHBOR DEBUG] Found multi-hex tile at ${checkKey} from ${keyStr}, type: ${tileEntry.type}`);
                                     break;
                                 }
                             }
@@ -4819,7 +4815,6 @@ class GameScene extends Phaser.Scene {
                 }
 
                 if (!neighborTile) {
-                    console.log(`[NEIGHBOR DEBUG] No tile found for neighbor ${neighbor.q},${neighbor.r},${neighbor.s} from ${keyStr}`);
                     continue;
                 }
 
@@ -4830,18 +4825,35 @@ class GameScene extends Phaser.Scene {
                     continue;
                 }
 
-                const backNeighbors = this.getTriangleNeighborsBase(
-                    neighbor.q,
-                    neighbor.r,
-                    neighborOriginalS,
-                );
-                const hasBackEdge = backNeighbors.some((back) => {
-                    const backKey = `${back.q},${back.r},${back.s}`;
-                    if (currentTile.type === "movement") {
-                        return backKey === keyStr;
-                    }
-                    return currentSpriteKeys && currentSpriteKeys.has(backKey);
-                });
+                // Back-edge validation: check if neighbor connects back to current tile
+                let hasBackEdge = false;
+                
+                if (neighborTile.type === "hub" || neighborTile.type === "planet" || neighborTile.type === "landing") {
+                    // For non-movement tiles (hub, planet), use hex-level adjacency
+                    // Check if any of the neighbor's occupied hexes are adjacent to current hex
+                    const neighborOccupiedPositions = neighborTile.occupiedPositions || [{ q: neighbor.q, r: neighbor.r }];
+                    const [currentQ, currentR] = [kq, kr];
+                    
+                    hasBackEdge = neighborOccupiedPositions.some((neighborPos) => {
+                        const hexNeighbors = this.getHexNeighbors(parseInt(neighborPos.q), parseInt(neighborPos.r));
+                        return hexNeighbors.some((hn) => hn.q === currentQ && hn.r === currentR);
+                    });
+                } else {
+                    // For movement tiles, use triangle-level back-edge validation
+                    const backNeighbors = this.getTriangleNeighborsBase(
+                        neighbor.q,
+                        neighbor.r,
+                        neighborOriginalS,
+                    );
+                    hasBackEdge = backNeighbors.some((back) => {
+                        const backKey = `${back.q},${back.r},${back.s}`;
+                        if (currentTile.type === "movement") {
+                            return backKey === keyStr;
+                        }
+                        return currentSpriteKeys && currentSpriteKeys.has(backKey);
+                    });
+                }
+                
                 if (!hasBackEdge) {
                     continue;
                 }
@@ -5109,6 +5121,11 @@ class GameScene extends Phaser.Scene {
                     current.r,
                     current.s,
                 );
+
+                // Debug: log neighbors for first few iterations
+                if (current.dist === 0) {
+                    console.log(`[BFS DEBUG] From ${currentKey}, neighbors:`, neighbors.map(n => `${n.q},${n.r},${n.s}`));
+                }
 
                 for (const neighbor of neighbors) {
                     let neighborS = neighbor.s;
