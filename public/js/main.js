@@ -2573,6 +2573,8 @@ class GameScene extends Phaser.Scene {
         }).setScrollFactor(0).setDepth(1000);
 
         this.boardGroup = this.add.group();
+        this.teleporterLayer = this.add.container(0, 0); // Separate layer for teleporter effects
+        this.teleporterLayer.setDepth(2); // Above board tiles but below ships
         this.boardOffset = { x: 0, y: 0 };
         this.players = []; // Initialize empty
         this.tileData = new Map();
@@ -3266,17 +3268,16 @@ class GameScene extends Phaser.Scene {
                     const canonical = `${pq},${pr},3`;
                     if (!this.teleportTiles.includes(canonical)) this.teleportTiles.push(canonical);
                     
-                    // Save sprite position before hiding
+                    // Save sprite position before destroying
                     const spriteX = sprite.x;
                     const spriteY = sprite.y;
                     
-                    console.log(`[TELEPORTER] Processing teleporter at ${pq},${pr} - hiding sprite at (${spriteX},${spriteY})`);
+                    console.log(`[TELEPORTER] Processing teleporter at ${pq},${pr} - destroying sprite at (${spriteX},${spriteY})`);
                     
-                    // Hide original sprite and create animated effect
-                    sprite.setVisible(false);
-                    sprite.setAlpha(0);
+                    // Completely destroy the original sprite to prevent green box
+                    sprite.destroy();
                     
-                    // Add animated teleporter effect with high depth
+                    // Add animated teleporter effect to dedicated layer (NOT boardGroup)
                     const isUp = (Math.abs(pq + pr)) % 2 === 0;
                     const teleporterEffect = this.createTeleporterEffect(
                         spriteX,
@@ -3284,8 +3285,7 @@ class GameScene extends Phaser.Scene {
                         scale,
                         isUp
                     );
-                    teleporterEffect.setDepth(5); // Above other tiles
-                    this.boardGroup.add(teleporterEffect);
+                    this.teleporterLayer.add(teleporterEffect);
                     
                     // Store reference for cleanup
                     if (!this.teleporterEffects) this.teleporterEffects = [];
@@ -4445,6 +4445,10 @@ class GameScene extends Phaser.Scene {
                 }
             });
             this.teleporterEffects = [];
+        }
+        // Clear the teleporter layer
+        if (this.teleporterLayer) {
+            this.teleporterLayer.removeAll(true);
         }
     }
 
