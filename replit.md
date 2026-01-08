@@ -83,3 +83,9 @@ npm start
 - Cargo card distribution follows rules: 52 total - 6 for markets - 10 for draw deck = 36 for players
 - Cards distributed evenly with remainder going to first players (e.g., 5 players: 8,7,7,7,7)
 - Each player gets 3 cards in cargo (hand) and rest in depot
+
+### Hub Pathfinding Fix (January 2026)
+- Hub is treated as a triangle with 3 valid pathing edges (NORTH, EAST, WEST)
+- Neighbor discovery now only uses edge hexes at indices 1, 3, 5 of occupiedPositions
+- Fixed getNeighbors to find hub tiles via spriteKeyMap when called from non-center positions
+- Teleportation is free (1 move to enter teleporter, then appear at destination)
