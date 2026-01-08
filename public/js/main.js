@@ -3429,7 +3429,7 @@ class GameScene extends Phaser.Scene {
             keysToExplore.push(currentKey);
         } else {
             // For non-movement tiles that occupy multiple hexes (hub, planets),
-            // check all neighboring hexes from ALL occupied positions
+            // check all neighboring hexes from edge positions only
             const occupiedHexes = new Set();
             
             // Get occupied positions from the tile data
@@ -3440,11 +3440,26 @@ class GameScene extends Phaser.Scene {
                 occupiedHexes.add(`${parseInt(pos.q)},${parseInt(pos.r)}`);
             });
             
-            // Get neighbors from ALL occupied hexes
-            let hexCount = 0;
-            occupiedHexes.forEach(hexKey => {
-                hexCount++;
-                const [hq, hr] = hexKey.split(',').map(Number);
+            // For hub: only use the 3 edge hexes (indices 1, 3, 5) for neighbor discovery
+            // These correspond to NORTH, EAST, WEST edges of the triangular hub
+            // Hub occupiedPositions: [(0,0), (1,0), (1,-1), (0,-1), (-1,-1), (-1,0)]
+            // Edge hexes: index 1=(1,0), index 3=(0,-1), index 5=(-1,0)
+            let edgeHexes;
+            if (currentTile.type === 'hub' && occupiedPositions.length === 6) {
+                edgeHexes = [
+                    occupiedPositions[1], // (1, 0) - EAST edge
+                    occupiedPositions[3], // (0, -1) - NORTH edge
+                    occupiedPositions[5]  // (-1, 0) - WEST edge
+                ];
+            } else {
+                // For other non-movement tiles (planets), use all positions
+                edgeHexes = occupiedPositions;
+            }
+            
+            // Get neighbors from edge hexes only
+            edgeHexes.forEach(pos => {
+                const hq = parseInt(pos.q);
+                const hr = parseInt(pos.r);
                 const hexNeighbors = this.getHexNeighbors(hq, hr);
                 
                 hexNeighbors.forEach(hexNbr => {
