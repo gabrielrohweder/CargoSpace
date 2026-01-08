@@ -3865,14 +3865,13 @@ class GameScene extends Phaser.Scene {
                 }
 
                 // Teleporters offer optional teleportation but don't block normal movement
-                // Teleportation costs 1 additional move (entering teleporter + teleporting = 2 moves total)
+                // Teleportation is free - walking to teleporter costs 1, then you appear at destination
                 if (tile.type === 'teleportation') {
                     const teleporterKey = key;
                     const destinations = this.teleporterMap ? this.teleporterMap.get(teleporterKey) : null;
 
                     if (destinations && destinations.length > 0) {
-                        const teleportCost = 1; // Additional cost for using teleporter
-                        const distAfterStep = current.dist + stepCost + teleportCost;
+                        const distAfterStep = current.dist + stepCost; // No extra cost for teleporting
                         if (distAfterStep <= range) {
                             destinations.forEach(destKey => {
                                 const destTile = this.tileData.get(destKey);
